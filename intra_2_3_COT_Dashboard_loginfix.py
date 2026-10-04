@@ -18,10 +18,10 @@ from PySide6.QtWidgets import (
     QApplication, QWidget, QPushButton, QLabel, QListWidget,
     QTableView, QFileDialog, QMessageBox, QVBoxLayout, QHBoxLayout,
     QLineEdit, QHeaderView, QCheckBox, QComboBox, QFrame, QProgressDialog,
-    QTabWidget, QButtonGroup
+    QTabWidget, QButtonGroup, QDateEdit
 )
 
-from PySide6.QtCore import Qt, QThread, Signal, QTimer, QEvent, QAbstractTableModel, QModelIndex
+from PySide6.QtCore import Qt, QThread, Signal, QTimer, QEvent, QAbstractTableModel, QModelIndex, QDate
 from PySide6.QtGui import QStandardItemModel, QStandardItem, QKeySequence, QShortcut, QCursor, QMovie, QColor, QPalette
 
 # --- TÍCH HỢP PLAYWRIGHT ĐỂ ĐĂNG NHẬP WMS LẤY COOKIE ---
@@ -34,7 +34,7 @@ from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.figure import Figure
 
 # ================= CẤU HÌNH PHIÊN BẢN & AUTO-UPDATE =================
-CURRENT_VERSION = "2.3.2_COT_warehouse5s"
+CURRENT_VERSION = "2.3.3_COT_compact"
 def _config_file_path():
     if not getattr(sys, "frozen", False):
         return os.path.join(os.path.dirname(os.path.abspath(__file__)), "wms_config.json")
@@ -95,6 +95,14 @@ QPushButton.cotBtn:hover {
     background-color: #89b4fa;
     color: #11111b;
 }
+
+QPushButton[cotChoice="true"]:checked, QPushButton[cotMetric="true"]:checked {
+    background-color: #89b4fa;
+    color: #11111b;
+    border: 1px solid #89b4fa;
+}
+QPushButton[cotChoice="true"] { padding: 8px 12px; }
+QPushButton[cotMetric="true"] { padding: 6px 8px; }
 
 /* Nút đặc biệt */
 QPushButton#btnLoginWMS {
@@ -352,106 +360,44 @@ def _extract_total(data):
     return len(lst) if isinstance(lst, list) else 0
 
 
-class COTDashboardThread(QThread):
-    cell_ready = Signal(str, str, object)
-    status_message = Signal(str)
-    auth_error = Signal(str)
-    dashboard_done = Signal()
+def _purchase_timestamp(row):
+    value = row.get("purchase_time")
+    try:
+        timestamp = float(value)
+        if timestamp > 10**12:
+            timestamp /= 1000
+        if timestamp > 0 and math.isfinite(timestamp):
+            return timestamp
+    except (TypeError, ValueError):
+        pass
+    raise RuntimeError("WMS thiếu Purchase Time; không thể xác định đúng khung Intra City.")
 
-    def __init__(self, cookie_str, definitions):
-        super().__init__()
-        self.cookie_str = cookie_str
-        self.definitions = definitions
 
-    def _count_one(self, cot_def, status_list, channels=None):
-        payload = _build_wms_payload(
-            cot_def, status_list, pageno=1, count=20, is_get_total=1,
-            channel_override=channels
-        )
-        data = _wms_post_retry(self.cookie_str, payload)
-        return _extract_total(data)
+def _filter_purchase_window(rows, beg, end):
+    # Khoảng nửa mở để đơn đúng 23:00 / 02:00 / 16:00 / 20:00 chỉ thuộc một COT.
+    begin, finish = beg.timestamp(), end.timestamp()
+    return [row for row in rows if begin <= _purchase_timestamp(row) < finish]
 
-    def run(self):
-        count_cache = {}
 
-        def cache_key(cot_def, metric_key, channels):
-            return (
-                int(cot_def["beg"].timestamp()),
-                int(cot_def["end"].timestamp()),
-                bool(cot_def.get("cutoff")),
-                tuple(channels or []),
-                metric_key,
-            )
-
+def _filter_created_window(rows, beg, end):
+    begin, finish = beg.timestamp(), end.timestamp()
+    result = []
+    for row in rows:
         try:
-            # Extension gốc tính GHN Tổng bằng GHN 50032 + 50011.
-            # Vì vậy tải các hàng thực trước, sau đó mới cộng hàng composite.
-            normal_defs = [d for d in self.definitions if not d.get("composite_channels")]
-            composite_defs = [d for d in self.definitions if d.get("composite_channels")]
-
-            for cot_def in normal_defs:
-                if self.isInterruptionRequested():
-                    break
-
-                for metric_key, status_list in COT_STATUS_GROUPS.items():
-                    if self.isInterruptionRequested():
-                        break
-                    channels = cot_def.get("channels")
-                    key = cache_key(cot_def, metric_key, channels)
-                    try:
-                        value = self._count_one(cot_def, status_list, channels)
-                        count_cache[key] = value
-                        self.cell_ready.emit(cot_def["key"], metric_key, value)
-                    except WMSAuthError as e:
-                        self.auth_error.emit(str(e))
-                        return
-                    except Exception as e:
-                        count_cache[key] = None
-                        self.cell_ready.emit(cot_def["key"], metric_key, None)
-                        self.status_message.emit(
-                            f"{cot_def['label']} / {COT_METRIC_LABELS[metric_key]}: {e}"
-                        )
-                    time.sleep(0.04)
-
-            for cot_def in composite_defs:
-                if self.isInterruptionRequested():
-                    break
-
-                for metric_key, status_list in COT_STATUS_GROUPS.items():
-                    if self.isInterruptionRequested():
-                        break
-                    try:
-                        values = []
-                        for child_channels in cot_def["composite_channels"]:
-                            key = cache_key(cot_def, metric_key, child_channels)
-                            if key in count_cache:
-                                child_value = count_cache[key]
-                            else:
-                                child_value = self._count_one(cot_def, status_list, child_channels)
-                                count_cache[key] = child_value
-
-                            if child_value is None:
-                                raise RuntimeError("Không đủ dữ liệu kênh con để tính tổng GHN.")
-                            values.append(child_value)
-
-                        self.cell_ready.emit(cot_def["key"], metric_key, sum(values))
-                    except WMSAuthError as e:
-                        self.auth_error.emit(str(e))
-                        return
-                    except Exception as e:
-                        self.cell_ready.emit(cot_def["key"], metric_key, None)
-                        self.status_message.emit(
-                            f"{cot_def['label']} / {COT_METRIC_LABELS[metric_key]}: {e}"
-                        )
-                    time.sleep(0.04)
-        finally:
-            self.dashboard_done.emit()
+            stamp = float(row["ctime"])
+            if stamp > 10**12:
+                stamp /= 1000
+        except (KeyError, TypeError, ValueError):
+            raise RuntimeError("WMS thiếu Create Time; không thể xác định đúng khung cắt Pick.")
+        if begin <= stamp < finish:
+            result.append(row)
+    return result
 
 
 class COTOrderListThread(QThread):
     list_ready = Signal(str, object, int)
     progress = Signal(str, int, int)
-    auth_error = Signal(str)
+    auth_error = Signal(str, str)
     error = Signal(str, str)
 
     def __init__(self, request_id, cookie_str, cot_def, metric_key, page_size=20):
@@ -523,9 +469,19 @@ class COTOrderListThread(QThread):
                 all_rows, total_expected = self._fetch_for_channels(self.cot_def.get("channels"))
 
             if not self.isInterruptionRequested():
+                if len(all_rows) < total_expected:
+                    raise RuntimeError(f"API trả thiếu trang: {len(all_rows):,}/{total_expected:,} đơn. Hãy tải lại COT này.")
+                if self.cot_def.get("purchase_beg"):
+                    all_rows = _filter_purchase_window(
+                        all_rows, self.cot_def["purchase_beg"], self.cot_def["purchase_end"]
+                    )
+                    total_expected = len(all_rows)
+                elif not self.cot_def.get("cutoff"):
+                    all_rows = _filter_created_window(all_rows, self.cot_def["beg"], self.cot_def["end"])
+                    total_expected = len(all_rows)
                 self.list_ready.emit(self.request_id, all_rows, total_expected)
         except WMSAuthError as e:
-            self.auth_error.emit(str(e))
+            self.auth_error.emit(self.request_id, str(e))
         except Exception as e:
             self.error.emit(self.request_id, str(e))
 
@@ -1176,12 +1132,9 @@ class WMSDashboard(QWidget):
 
         # ===== WMS / COT Dashboard =====
         self.login_thread = None
-        self.cot_dashboard_thread = None
         self.cot_list_thread = None
         self.cot_definitions = []
         self.cot_definition_map = {}
-        self.cot_row_keys = []
-        self.cot_row_index = {}
         self.cot_cache = {}
         self.cot_current_df = pd.DataFrame()
         self.cot_current_total = 0
@@ -1189,7 +1142,12 @@ class WMSDashboard(QWidget):
         self._active_cot_request_id = None
         self._active_cot_cache_key = None
         self._pending_cot_list_request = None
-        self._cot_auth_failed = False
+        self.cot_current_rows = []
+        self.cot_active_slot = None
+        self.cot_buttons = {}
+        self.cot_metric_buttons = {}
+        self._cot_request_serial = 0
+        self._cot_data_ready = False
 
         self.config = load_config()
 
@@ -1364,41 +1322,58 @@ del /F /Q "{backup_exe}" >nul 2>&1
         cot_root.setSpacing(8)
 
         cot_toolbar = QHBoxLayout()
-        self.btnCotRefresh = QPushButton("🔄 Tải COT Dashboard")
-        self.btnCotReloadList = QPushButton("🔄 Tải lại danh sách")
-        self.btnCotCopyList = QPushButton("📄 Copy danh sách")
-        self.btnCotExportList = QPushButton("📤 Export danh sách")
+        self.cotService = QComboBox()
+        self.cotService.addItems(["Intra City", "SDD", "AhaMove", "SPX Cồng kềnh", "GHN"])
+        self.cotService.setMinimumWidth(150)
+        self.cotDate = QDateEdit(QDate.currentDate())
+        self.cotDate.setDate(QDate(datetime.now(VN_TZ).year, datetime.now(VN_TZ).month, datetime.now(VN_TZ).day))
+        self.cotDate.setDisplayFormat("dd/MM/yyyy")
+        self.cotDate.setCalendarPopup(True)
+        self.cotDate.setToolTip("Ngày kết thúc khung COT. Intra COT 1/2 và các khung qua đêm bắt đầu từ ngày trước.")
+        self.btnCotReloadList = QPushButton("🔄 Tải lại COT")
+        self.btnCotCopyList = QPushButton("📄 Copy")
+        self.btnCotExportList = QPushButton("📤 Export")
         self.searchCotBox = QLineEdit()
-        self.searchCotBox.setPlaceholderText("🔍 Tìm trong danh sách đơn API...")
-        self.searchCotBox.setMinimumWidth(280)
-
-        cot_toolbar.addWidget(self.btnCotRefresh)
+        self.searchCotBox.setPlaceholderText("🔍 Tìm trong COT đang chọn...")
+        cot_toolbar.addWidget(QLabel("Nhóm:"))
+        cot_toolbar.addWidget(self.cotService)
+        cot_toolbar.addWidget(QLabel("Ngày:"))
+        cot_toolbar.addWidget(self.cotDate)
         cot_toolbar.addWidget(self.btnCotReloadList)
         cot_toolbar.addWidget(self.btnCotCopyList)
         cot_toolbar.addWidget(self.btnCotExportList)
-        cot_toolbar.addStretch()
-        cot_toolbar.addWidget(self.searchCotBox)
+        cot_toolbar.addWidget(self.searchCotBox, 1)
         cot_root.addLayout(cot_toolbar)
 
-        cot_hint = QLabel(
-            "💡 Click vào tên COT/khung giờ để xem toàn bộ đơn; "
-            "click trực tiếp vào Chưa Pick / Check / Pack / WIS / Chưa Outbound / Tổng đơn "
-            "để tải đúng danh sách của nhóm đó."
-        )
-        cot_hint.setStyleSheet("color: #a6adc8; font-size: 11px;")
-        cot_root.addWidget(cot_hint)
+        self.cotButtonRow = QHBoxLayout()
+        cot_root.addLayout(self.cotButtonRow)
+        self.cotSlotPanel = QWidget()
+        self.cotSlotRow = QHBoxLayout(self.cotSlotPanel)
+        self.cotSlotRow.setContentsMargins(0, 0, 0, 0)
+        cot_root.addWidget(self.cotSlotPanel)
+        self.cotSlotPanel.hide()
 
-        self.cotDashboardModel = QStandardItemModel(self)
-        self.cotDashboardTable = QTableView()
-        self.cotDashboardTable.setModel(self.cotDashboardModel)
-        self.cotDashboardTable.setMinimumHeight(300)
-        self.cotDashboardTable.setMaximumHeight(390)
-        self.cotDashboardTable.horizontalHeader().setSectionResizeMode(QHeaderView.Interactive)
-        cot_root.addWidget(self.cotDashboardTable)
-
-        self.lblCotSelection = QLabel("📌 Chọn một COT hoặc một ô sản lượng để tải danh sách đơn.")
+        self.lblCotSelection = QLabel("Chọn một nút COT để tải đơn của COT đó.")
         self.lblCotSelection.setStyleSheet("color: #89b4fa; font-weight: bold;")
         cot_root.addWidget(self.lblCotSelection)
+        self.lblCotHandoff = QLabel("Intra City: theo Purchase Time. SDD / AhaMove / SPX: theo giờ cắt Pick.")
+        self.lblCotHandoff.setStyleSheet("color: #a6adc8; font-size: 11px;")
+        self.lblCotHandoff.setWordWrap(True)
+        cot_root.addWidget(self.lblCotHandoff)
+
+        metric_row = QHBoxLayout()
+        self.cotMetricGroup = QButtonGroup(self)
+        for key, label in COT_METRIC_LABELS.items():
+            button = QPushButton(f"{label}: —")
+            button.setCheckable(True)
+            button.setEnabled(False)
+            button.setProperty("cotMetric", True)
+            button.clicked.connect(lambda checked=False, mk=key: self._select_cot_metric(mk))
+            self.cotMetricGroup.addButton(button)
+            self.cot_metric_buttons[key] = button
+            metric_row.addWidget(button, 1)
+        self.cot_metric_buttons["total"].setChecked(True)
+        cot_root.addLayout(metric_row)
 
         self.cot_order_model = PandasModel()
         self.cotOrderTable = QTableView()
@@ -1578,12 +1553,12 @@ del /F /Q "{backup_exe}" >nul 2>&1
 
         # ===== Signal chung / COT =====
         self.btnLoginWMS.clicked.connect(self.login_wms)
-        self.btnCotRefresh.clicked.connect(self.refresh_cot_dashboard)
         self.btnCotReloadList.clicked.connect(self.reload_cot_order_list)
         self.btnCotCopyList.clicked.connect(self.copy_cot_order_list)
         self.btnCotExportList.clicked.connect(self.export_cot_order_list)
         self.searchCotBox.textChanged.connect(self.search_cot_orders)
-        self.cotDashboardTable.clicked.connect(self.on_cot_dashboard_clicked)
+        self.cotService.currentTextChanged.connect(self._refresh_cot_picker)
+        self.cotDate.dateChanged.connect(self._refresh_cot_picker)
 
         # ===== Signal Excel hiện có =====
         self.btnClipboard.clicked.connect(self.load_clipboard)
@@ -1614,9 +1589,8 @@ del /F /Q "{backup_exe}" >nul 2>&1
         cot_shortcut_copy = QShortcut(QKeySequence.Copy, self.cotOrderTable)
         cot_shortcut_copy.activated.connect(self.copy_cot_order_list)
 
-        # Dựng khung COT ngay khi mở app; số liệu chỉ tải khi bấm Refresh.
-        self.cot_definitions = self.build_cot_definitions()
-        self._populate_cot_dashboard_model()
+        # Không gọi WMS khi mở app, đổi nhóm hoặc đổi ngày.
+        self._refresh_cot_picker()
 
     def login_wms(self):
         if self.login_thread is not None and self.login_thread.isRunning():
@@ -1648,6 +1622,7 @@ del /F /Q "{backup_exe}" >nul 2>&1
     def _on_login_success(self, cookie_str):
         self._login_outcome_received = True
         self.cot_cache.clear()
+        self._refresh_cot_picker()
         self.config["wms_cookie"] = cookie_str
         saved = save_config(self.config)
 
@@ -1676,217 +1651,202 @@ del /F /Q "{backup_exe}" >nul 2>&1
         QMessageBox.warning(self, "Phiên WMS", message)
 
     def build_cot_definitions(self):
-        # Logic thời gian được lấy từ extension COT Counter người dùng cung cấp.
-        now = datetime.now(VN_TZ)
-        today = now.replace(hour=0, minute=0, second=0, microsecond=0)
+        # Ngày COT là ngày kết thúc chu kỳ; mọi mốc đều theo giờ Việt Nam.
+        day = self.cotDate.date().toPython()
+        today = datetime(day.year, day.month, day.day, tzinfo=VN_TZ)
         yesterday = today - timedelta(days=1)
+        now = datetime.now(VN_TZ)
 
         def at(base, hour, minute=0):
-            return base.replace(hour=hour, minute=minute, second=0, microsecond=0)
+            return base.replace(hour=hour, minute=minute)
 
-        aha_channels = ["50033", "50044"]
-        sdd_channels = ["50051"]
+        def pick(key, group, button, beg, end, channels, handoff):
+            return dict(key=key, group=group, button=button, label=f"{group} · {button}",
+                        beg=beg, end=end, channels=channels, cutoff=False, handoff=handoff)
 
-        return [
-            {
-                "key": "aha10", "label": "AhaMove COT 10H",
-                "beg": at(yesterday, 18, 0), "end": at(today, 8, 0),
-                "channels": aha_channels, "cutoff": False,
-            },
-            {
-                "key": "aha15", "label": "AhaMove COT 15H",
-                "beg": at(today, 8, 0), "end": at(today, 13, 0),
-                "channels": aha_channels, "cutoff": False,
-            },
-            {
-                "key": "aha20", "label": "AhaMove COT 20H",
-                "beg": at(today, 13, 0), "end": at(today, 18, 0),
-                "channels": aha_channels, "cutoff": False,
-            },
-            {
-                "key": "sdd09", "label": "SDD COT 09H",
-                "beg": at(yesterday, 13, 30), "end": at(today, 9, 0),
-                "channels": sdd_channels, "cutoff": False,
-            },
-            {
-                "key": "sdd1330", "label": "SDD COT 13:30",
-                "beg": at(today, 9, 0), "end": at(today, 13, 30),
-                "channels": sdd_channels, "cutoff": False,
-            },
-            {
-                "key": "intra03", "label": "Intra City COT 03H",
-                "beg": at(today, 2, 59), "end": at(today, 3, 1),
-                "channels": None, "cutoff": True,
-            },
-            {
-                "key": "intra06", "label": "Intra City COT 06H",
-                "beg": at(today, 5, 59), "end": at(today, 6, 1),
-                "channels": None, "cutoff": True,
-            },
-            {
-                "key": "intra20", "label": "Intra City COT 20H",
-                "beg": at(today, 19, 59), "end": at(today, 20, 1),
-                "channels": None, "cutoff": True,
-            },
-            {
-                "key": "intra_end", "label": "Intra City COT CUỐI",
-                "beg": at(today, 23, 49), "end": at(today, 23, 51),
-                "channels": None, "cutoff": True,
-            },
-            {
-                "key": "bulky", "label": "BULKY (50025)",
-                "beg": at(yesterday, 17, 0), "end": at(today, 17, 0),
-                "channels": ["50025"], "cutoff": False,
-            },
-            {
-                "key": "ghn_total", "label": "GHN TỔNG (50032 + 50011)",
-                "beg": at(today, 0, 0), "end": now,
-                "channels": None, "cutoff": False,
-                "composite_channels": [["50032"], ["50011"]],
-            },
-            {
-                "key": "ghn50032", "label": "↳ GHN Cồng Kềnh (50032)",
-                "beg": at(today, 0, 0), "end": now,
-                "channels": ["50032"], "cutoff": False,
-            },
-            {
-                "key": "ghn50011", "label": "↳ GHN Normal (50011)",
-                "beg": at(today, 0, 0), "end": now,
-                "channels": ["50011"], "cutoff": False,
-            },
+        def slot(label, beg, end, handoff):
+            return dict(label=label, beg=beg, end=end, handoff=handoff)
+
+        def intra(key, button, begin, finish, cutoff_hour, cutoff_minute, handoff, slots=None):
+            # Giữ truy vấn Cut-Off đã chạy đúng để không lẫn kênh vận chuyển khác.
+            # Purchase Time từ API quyết định đơn thuộc khung COT nào theo bảng mới.
+            cut = at(today, cutoff_hour, cutoff_minute)
+            return dict(key=key, group="Intra City", button=button, label=f"Intra City · {button}",
+                        beg=cut - timedelta(minutes=1), end=cut + timedelta(minutes=1),
+                        channels=None, cutoff=True, purchase_beg=begin, purchase_end=finish,
+                        handoff=handoff, slots=slots or [])
+
+        aha = ["50033", "50044"]
+        sdd = ["50051"]
+        defs = [
+            intra("intra03", "COT 1 · 20–23", at(yesterday, 20), at(yesterday, 23), 3, 0,
+                  "Cắt Pick 23:00 → Check 23:15 → Pack 00:00 → WIS 02:00"),
+            intra("intra06", "COT 2 · 23–02", at(yesterday, 23), at(today, 2), 6, 0,
+                  "Cắt Pick 02:00 → Check 02:15 → Pack 03:00 → WIS 05:00"),
+            intra("intra20", "COT 3 · 02–16", at(today, 2), at(today, 16), 20, 0,
+                  "Khung 02–05: WIS 06:00 · Khung 05–16: WIS 19:00", [
+                      slot("02–05", at(today, 2), at(today, 5), "Cắt Pick 05:00 → Check 05:15 → Pack 05:30 → WIS 06:00"),
+                      slot("05–16", at(today, 5), at(today, 16), "Cắt Pick 16:00 → Check 16:15 → Pack 16:30 → WIS 19:00"),
+                  ]),
+            intra("intra_end", "COT 4 · 16–20", at(today, 16), at(today, 20), 23, 50,
+                  "Khung 16–18: WIS 19:00 · Khung 18–20: WIS 23:00", [
+                      slot("16–18", at(today, 16), at(today, 18), "Cắt Pick 18:00 → Check 18:15 → Pack 18:30 → WIS 19:00"),
+                      slot("18–20", at(today, 18), at(today, 20), "Cắt Pick 20:00 → Check 20:15 → Pack 20:30 → WIS 23:00"),
+                  ]),
+            pick("sdd18_04", "SDD", "18–04", at(yesterday, 18), at(today, 4), sdd,
+                 "Cắt Pick 04:00 → Check 04:30 → Pack 05:00 → WIS 05:30"),
+            pick("sdd04_09", "SDD", "04–09", at(today, 4), at(today, 9), sdd,
+                 "Cắt Pick 09:00 → Check 09:15 → Pack 09:20 → WIS 09:45"),
+            pick("sdd09_1330", "SDD", "09–13:30", at(today, 9), at(today, 13, 30), sdd,
+                 "Cắt Pick 13:30 → Check 13:40 → Pack 13:55 → WIS 14:15"),
+            pick("sdd1330_18", "SDD", "13:30–18", at(today, 13, 30), at(today, 18), sdd,
+                 "Cắt Pick 18:00 → Check 21:00 → Pack 21:30 → WIS 22:00"),
+            pick("aha10", "AhaMove", "18–08", at(yesterday, 18), at(today, 8), aha,
+                 "Cắt Pick 08:00 → Check 08:30 → Pack 09:00 → WIS 09:30"),
+            pick("aha15", "AhaMove", "08–13", at(today, 8), at(today, 13), aha,
+                 "Cắt Pick 13:00 → Check 13:30 → Pack 14:00 → WIS 14:30"),
+            pick("aha20", "AhaMove", "13–18", at(today, 13), at(today, 18), aha,
+                 "Cắt Pick 18:00 → Check 18:30 → Pack 19:00 → WIS 19:30"),
+            pick("bulky", "SPX Cồng kềnh", "17–17 (qua ngày)", at(yesterday, 17), at(today, 17), ["50025"],
+                 "Cắt Pick 17:00 → Check 17:15 → Pack 17:20 → WIS 17:30"),
         ]
+        end_day = min(today + timedelta(days=1), max(today, now))
+        defs.extend([
+            dict(key="ghn_total", group="GHN", button="Tổng GHN", label="GHN · Tổng", beg=today, end=end_day,
+                 channels=None, cutoff=False, composite_channels=[["50032"], ["50011"]], handoff="GHN · Trong ngày đã chọn"),
+            pick("ghn50032", "GHN", "Cồng kềnh", today, end_day, ["50032"], "GHN · Trong ngày đã chọn"),
+            pick("ghn50011", "GHN", "Normal", today, end_day, ["50011"], "GHN · Trong ngày đã chọn"),
+        ])
+        return defs
 
     def _format_cot_range(self, cot_def):
-        beg = cot_def["beg"]
-        end = cot_def["end"]
+        beg = cot_def.get("purchase_beg", cot_def["beg"])
+        end = cot_def.get("purchase_end", cot_def["end"])
         return f"{beg:%d/%m %H:%M} → {end:%d/%m %H:%M}"
 
-    def _populate_cot_dashboard_model(self):
-        headers = [
-            "COT / Kênh", "Khung giờ",
-            "Chưa Pick", "Chưa Check", "Chưa Pack",
-            "Chưa WIS", "Chưa Outbound", "Tổng đơn"
-        ]
-        self.cotDashboardModel.clear()
-        self.cotDashboardModel.setHorizontalHeaderLabels(headers)
+    def _clear_cot_button_row(self, layout):
+        while layout.count():
+            item = layout.takeAt(0)
+            if item.widget():
+                item.widget().hide()
+                item.widget().deleteLater()
 
-        self.cot_definition_map = {d["key"]: d for d in self.cot_definitions}
-        self.cot_row_keys = [d["key"] for d in self.cot_definitions]
-        self.cot_row_index = {}
-
-        for row_idx, cot_def in enumerate(self.cot_definitions):
-            self.cot_row_index[cot_def["key"]] = row_idx
-            values = [
-                cot_def["label"],
-                self._format_cot_range(cot_def),
-                "...", "...", "...", "...", "...", "..."
-            ]
-            items = []
-            for value in values:
-                item = QStandardItem(str(value))
-                item.setEditable(False)
-                items.append(item)
-            self.cotDashboardModel.appendRow(items)
-
-        header = self.cotDashboardTable.horizontalHeader()
-        header.setSectionResizeMode(0, QHeaderView.Stretch)
-        header.setSectionResizeMode(1, QHeaderView.ResizeToContents)
-        for col in range(2, 8):
-            header.setSectionResizeMode(col, QHeaderView.ResizeToContents)
-
-    def refresh_cot_dashboard(self):
-        cookie_str = self.config.get("wms_cookie", "")
-        if not cookie_str:
-            QMessageBox.warning(self, "Chưa đăng nhập", "Vui lòng đăng nhập WMS trước.")
-            return
-
-        if self.cot_dashboard_thread is not None and self.cot_dashboard_thread.isRunning():
-            QMessageBox.information(self, "COT Dashboard", "Dashboard đang tải dữ liệu.")
-            return
-
-        # Giữ cùng một mốc thời gian cho số đếm và danh sách click sau đó.
+    def _refresh_cot_picker(self, *args):
+        self._cot_data_ready = False
+        self._active_cot_request_id = None
+        self._active_cot_cache_key = None
+        self._pending_cot_list_request = None
+        if self.cot_list_thread is not None and self.cot_list_thread.isRunning():
+            self.cot_list_thread.requestInterruption()
         self.cot_definitions = self.build_cot_definitions()
-        self._populate_cot_dashboard_model()
-        self.cot_cache.clear()
-        self.cot_current_df = pd.DataFrame()
+        self.cot_definition_map = {d["key"]: d for d in self.cot_definitions}
         self.cot_current_selection = None
+        self.cot_current_rows = []
+        self.cot_current_df = pd.DataFrame()
+        self.cot_current_total = 0
+        self.searchCotBox.clear()
         self.cot_order_model.update_data(pd.DataFrame())
-        self.lblCotOrderCount.setText("📊 Danh sách API: 0 dòng")
-        self.lblCotSelection.setText("📌 Dashboard vừa được làm mới. Click một ô để tải danh sách đơn.")
+        self.lblCotOrderCount.setText("Chưa tải COT · Bấm nút để tải đúng khung cần xem.")
+        self.lblCotSelection.setText("Chọn một nút COT để tải đơn của COT đó.")
+        self.lblCotHandoff.setText("Intra City: theo Purchase Time. SDD / AhaMove / SPX: theo giờ cắt Pick.")
+        self.cotSlotPanel.hide()
+        self._clear_cot_button_row(self.cotButtonRow)
+        if hasattr(self, "cotButtonGroup"):
+            self.cotButtonGroup.deleteLater()
+        self.cotButtonGroup = QButtonGroup(self)
+        self.cot_buttons = {}
+        for cot in self.cot_definitions:
+            if cot["group"] != self.cotService.currentText():
+                continue
+            button = QPushButton(cot["button"])
+            button.setCheckable(True)
+            button.setProperty("cotChoice", True)
+            button.setToolTip(f"{self._format_cot_range(cot)}\n{cot['handoff']}")
+            button.clicked.connect(lambda checked=False, key=cot["key"]: self.request_cot_order_list(key, "total"))
+            self.cotButtonGroup.addButton(button)
+            self.cotButtonRow.addWidget(button, 1)
+            self.cot_buttons[cot["key"]] = button
+        for key, button in self.cot_metric_buttons.items():
+            button.setText(f"{COT_METRIC_LABELS[key]}: —")
+            button.setEnabled(False)
+        self.set_banner_status(False, custom_msg="Chọn một COT để tải dữ liệu.")
 
-        self._cot_auth_failed = False
-        self.btnCotRefresh.setEnabled(False)
-        self.set_banner_status(
-            is_loading=True,
-            custom_msg="⌛ Đang tải sản lượng COT từ WMS..."
-        )
+    def _prepare_cot_selection(self, cot_def):
+        self._cot_data_ready = False
+        self.cot_active_slot = None
+        self.cot_current_rows = []
+        self.cot_current_df = pd.DataFrame()
+        self.cot_current_total = 0
+        self.cot_order_model.update_data(pd.DataFrame())
+        if cot_def["key"] in self.cot_buttons:
+            self.cot_buttons[cot_def["key"]].setChecked(True)
+        self.lblCotSelection.setText(f"{cot_def['label']} | {self._format_cot_range(cot_def)}")
+        self.lblCotHandoff.setText(cot_def["handoff"])
+        self.cot_metric_buttons["total"].setChecked(True)
+        for key, button in self.cot_metric_buttons.items():
+            button.setText(f"{COT_METRIC_LABELS[key]}: —")
+            button.setEnabled(False)
+        self._clear_cot_button_row(self.cotSlotRow)
+        if hasattr(self, "cotSlotGroup"):
+            self.cotSlotGroup.deleteLater()
+        self.cotSlotGroup = QButtonGroup(self)
+        slots = cot_def.get("slots", [])
+        if slots:
+            self.cotSlotRow.addWidget(QLabel("Khung nhỏ:"))
+            for index, label in [(None, "Toàn COT")] + [(i, sl["label"]) for i, sl in enumerate(slots)]:
+                button = QPushButton(label)
+                button.setCheckable(True)
+                button.setProperty("cotChoice", True)
+                button.setChecked(index is None)
+                button.clicked.connect(lambda checked=False, i=index: self._select_cot_slot(i))
+                self.cotSlotGroup.addButton(button)
+                self.cotSlotRow.addWidget(button)
+            self.cotSlotRow.addStretch()
+        self.cotSlotPanel.setVisible(bool(slots))
 
-        self.cot_dashboard_thread = COTDashboardThread(cookie_str, self.cot_definitions)
-        self.cot_dashboard_thread.cell_ready.connect(self._on_cot_cell_ready)
-        self.cot_dashboard_thread.status_message.connect(self._on_cot_dashboard_message)
-        self.cot_dashboard_thread.auth_error.connect(self._on_cot_dashboard_auth_error)
-        self.cot_dashboard_thread.dashboard_done.connect(self._on_cot_dashboard_done)
-        self.cot_dashboard_thread.start()
-
-    def _on_cot_cell_ready(self, row_key, metric_key, value):
-        row = self.cot_row_index.get(row_key)
-        metric_cols = {
-            "pick": 2, "check": 3, "pack": 4,
-            "wis": 5, "pending": 6, "total": 7
-        }
-        col = metric_cols.get(metric_key)
-        if row is None or col is None:
+    def _select_cot_slot(self, index):
+        if not self.cot_current_selection:
             return
+        self.cot_active_slot = index
+        cot = self.cot_definition_map[self.cot_current_selection[0]]
+        sl = cot["slots"][index] if index is not None else None
+        self.lblCotHandoff.setText(sl["handoff"] if sl else cot["handoff"])
+        span = dict(cot, purchase_beg=sl["beg"], purchase_end=sl["end"]) if sl else cot
+        self.lblCotSelection.setText(f"{cot['label']} | {self._format_cot_range(span)}")
+        self._show_cot_scope()
 
-        item = self.cotDashboardModel.item(row, col)
-        if item is None:
-            item = QStandardItem()
-            item.setEditable(False)
-            self.cotDashboardModel.setItem(row, col, item)
-
-        if value is None:
-            item.setText("Lỗi")
-        else:
-            item.setText(f"{int(value):,}")
-
-    def _on_cot_dashboard_message(self, message):
-        self.lblStatusMsg.setText(f"⚠ {message}")
-
-    def _on_cot_dashboard_auth_error(self, message):
-        self._cot_auth_failed = True
-        self._invalidate_wms_cookie(message)
-
-    def _on_cot_dashboard_done(self):
-        self.btnCotRefresh.setEnabled(True)
-        if not self._cot_auth_failed:
-            self.set_banner_status(
-                is_loading=False,
-                success=True,
-                custom_msg="✅ Đã tải xong COT Dashboard. Click ô sản lượng để xem danh sách đơn."
-            )
-
-    def on_cot_dashboard_clicked(self, index):
-        if not index.isValid():
+    def _select_cot_metric(self, metric_key):
+        if not self.cot_current_selection:
             return
+        self.cot_current_selection = (self.cot_current_selection[0], metric_key)
+        self._show_cot_scope()
 
-        row = index.row()
-        col = index.column()
-        if row < 0 or row >= len(self.cot_row_keys):
+    def _show_cot_scope(self):
+        if not self.cot_current_selection or not self._cot_data_ready:
             return
-
-        row_key = self.cot_row_keys[row]
-        metric_by_col = {
-            2: "pick",
-            3: "check",
-            4: "pack",
-            5: "wis",
-            6: "pending",
-            7: "total",
-        }
-
-        # Click tên COT hoặc khung giờ -> toàn bộ đơn của nhóm Tổng.
-        metric_key = metric_by_col.get(col, "total")
-        self.request_cot_order_list(row_key, metric_key)
+        cot_key, metric_key = self.cot_current_selection
+        rows = self.cot_current_rows
+        if self.cot_active_slot is not None:
+            slot = self.cot_definition_map[cot_key]["slots"][self.cot_active_slot]
+            rows = _filter_purchase_window(rows, slot["beg"], slot["end"])
+        def status(row):
+            value = row.get("order_status", row.get("status", ""))
+            try:
+                return str(int(value))
+            except (ValueError, TypeError):
+                return str(value)
+        for key, button in self.cot_metric_buttons.items():
+            allowed = set(COT_STATUS_GROUPS[key].split(","))
+            count = len(rows) if key == "total" else sum(status(r) in allowed for r in rows)
+            button.setText(f"{COT_METRIC_LABELS[key]}: {count:,}")
+            button.setEnabled(True)
+        self.cot_metric_buttons[metric_key].setChecked(True)
+        if metric_key != "total":
+            allowed = set(COT_STATUS_GROUPS[metric_key].split(","))
+            rows = [r for r in rows if status(r) in allowed]
+        self._display_cot_orders(self._orders_to_dataframe(rows), len(rows))
+        if self.searchCotBox.text():
+            self.search_cot_orders()
 
     def _cot_cache_key(self, cot_def, metric_key):
         if cot_def.get("composite_channels"):
@@ -1901,56 +1861,48 @@ del /F /Q "{backup_exe}" >nul 2>&1
             channel_key,
         )
 
-    def request_cot_order_list(self, row_key, metric_key, force=False):
+    def request_cot_order_list(self, row_key, metric_key="total", force=False):
+        cot_def = self.cot_definition_map.get(row_key)
+        if cot_def is None:
+            return
+        self.cot_current_selection = (row_key, metric_key)
+        self._prepare_cot_selection(cot_def)
+        self.searchCotBox.clear()
+        self._active_cot_request_id = None
+        self._active_cot_cache_key = None
+        self._pending_cot_list_request = None
+        running = self.cot_list_thread is not None and self.cot_list_thread.isRunning()
+        if running:
+            self.cot_list_thread.requestInterruption()
         cookie_str = self.config.get("wms_cookie", "")
         if not cookie_str:
             QMessageBox.warning(self, "Chưa đăng nhập", "Vui lòng đăng nhập WMS trước.")
             return
-
-        cot_def = self.cot_definition_map.get(row_key)
-        if cot_def is None or metric_key not in COT_STATUS_GROUPS:
-            return
-
-        self.cot_current_selection = (row_key, metric_key)
-        metric_label = COT_METRIC_LABELS[metric_key]
-        self.lblCotSelection.setText(
-            f"📌 {cot_def['label']} → {metric_label} | {self._format_cot_range(cot_def)}"
-        )
-
-        cache_key = self._cot_cache_key(cot_def, metric_key)
+        cache_key = self._cot_cache_key(cot_def, "total")
         if force:
             self.cot_cache.pop(cache_key, None)
-
         if cache_key in self.cot_cache:
-            df, total = self.cot_cache[cache_key]
-            self._display_cot_orders(df, total)
+            self.cot_current_rows = list(self.cot_cache[cache_key][0])
+            self._cot_data_ready = True
+            self._show_cot_scope()
             return
-
-        if self.cot_list_thread is not None and self.cot_list_thread.isRunning():
+        if running:
             self._pending_cot_list_request = (row_key, metric_key, force)
-            self.cot_list_thread.requestInterruption()
-            self.lblCotOrderCount.setText("⏳ Đang chuyển sang bộ lọc vừa chọn...")
+            self.lblCotOrderCount.setText("⏳ Đang chuyển sang COT vừa chọn...")
+            self.set_banner_status(True, custom_msg=f"⌛ Đang chuyển sang {cot_def['label']}...")
             return
-
-        self._start_cot_order_thread(cot_def, metric_key, cache_key)
+        self._start_cot_order_thread(cot_def, "total", cache_key)
 
     def _start_cot_order_thread(self, cot_def, metric_key, cache_key):
-        request_id = (
-            f"{cot_def['key']}|{metric_key}|"
-            f"{int(cot_def['beg'].timestamp())}|{int(cot_def['end'].timestamp())}"
-        )
+        self._cot_request_serial += 1
+        request_id = f"{cot_def['key']}|{self._cot_request_serial}"
         self._active_cot_request_id = request_id
         self._active_cot_cache_key = cache_key
-        self.searchCotBox.clear()
-        self.cot_order_model.update_data(pd.DataFrame())
-        self.lblCotOrderCount.setText("⏳ Đang tải danh sách đơn từ WMS...")
-
+        self.lblCotOrderCount.setText("⏳ Đang tải COT đã chọn...")
+        self.set_banner_status(True, custom_msg=f"⌛ Đang tải {cot_def['label']}...")
         self.cot_list_thread = COTOrderListThread(
-            request_id=request_id,
-            cookie_str=self.config.get("wms_cookie", ""),
-            cot_def=cot_def,
-            metric_key=metric_key,
-            page_size=20,
+            request_id=request_id, cookie_str=self.config.get("wms_cookie", ""),
+            cot_def=cot_def, metric_key="total", page_size=20,
         )
         self.cot_list_thread.list_ready.connect(self._on_cot_list_ready)
         self.cot_list_thread.progress.connect(self._on_cot_list_progress)
@@ -1968,16 +1920,15 @@ del /F /Q "{backup_exe}" >nul 2>&1
         if request_id != self._active_cot_request_id:
             return
 
-        df = self._orders_to_dataframe(rows)
-        self.cot_current_df = df
-        self.cot_current_total = int(total_expected)
-
+        self.cot_current_rows = list(rows)
+        self._cot_data_ready = True
         if self._active_cot_cache_key is not None:
-            self.cot_cache[self._active_cot_cache_key] = (df.copy(), self.cot_current_total)
+            self.cot_cache[self._active_cot_cache_key] = (list(rows), int(total_expected))
+        self._show_cot_scope()
 
-        self._display_cot_orders(df, self.cot_current_total)
-
-    def _on_cot_list_auth_error(self, message):
+    def _on_cot_list_auth_error(self, request_id, message):
+        if request_id != self._active_cot_request_id:
+            return
         self._invalidate_wms_cookie(message)
 
     def _on_cot_list_error(self, request_id, message):
@@ -1993,6 +1944,8 @@ del /F /Q "{backup_exe}" >nul 2>&1
 
         pending = self._pending_cot_list_request
         self._pending_cot_list_request = None
+        if not pending and not self._cot_data_ready:
+            self.set_banner_status(False, custom_msg=self.lblCotOrderCount.text())
         if pending:
             row_key, metric_key, force = pending
             QTimer.singleShot(
@@ -2024,6 +1977,7 @@ del /F /Q "{backup_exe}" >nul 2>&1
             "buyer_city": "Buyer City",
             "cut_off_time": "Cut-Off Time",
             "ctime": "Create Time",
+            "purchase_time": "Purchase Time",
         }
 
         normalized = []
@@ -2053,7 +2007,7 @@ del /F /Q "{backup_exe}" >nul 2>&1
             "Channel ID", "Channel", "API Source Channel",
             "WHS ID", "Wave Type", "Picking ID", "Device ID",
             "LM Tracking Number", "Buyer Name", "Buyer State", "Buyer City",
-            "Cut-Off Time", "Create Time"
+            "Purchase Time", "Cut-Off Time", "Create Time"
         ]
         ordered = [c for c in preferred if c in df.columns]
         ordered.extend(c for c in df.columns if c not in ordered)
@@ -2106,7 +2060,7 @@ del /F /Q "{backup_exe}" >nul 2>&1
 
     def reload_cot_order_list(self):
         if not self.cot_current_selection:
-            QMessageBox.information(self, "COT", "Hãy chọn một COT/ô sản lượng trước.")
+            QMessageBox.information(self, "COT", "Hãy chọn một nút COT trước.")
             return
         row_key, metric_key = self.cot_current_selection
         self.request_cot_order_list(row_key, metric_key, force=True)
@@ -2668,7 +2622,7 @@ del /F /Q "{backup_exe}" >nul 2>&1
         self._pending_cot_list_request = None
 
         # Yêu cầu các thread WMS dừng ở điểm an toàn giữa các request.
-        for thread in (self.cot_dashboard_thread, self.cot_list_thread, self.login_thread):
+        for thread in (self.cot_list_thread, self.login_thread):
             if thread is not None and thread.isRunning():
                 thread.requestInterruption()
 
@@ -2681,7 +2635,7 @@ del /F /Q "{backup_exe}" >nul 2>&1
                 event.ignore()
                 return
 
-        for thread in (self.cot_dashboard_thread, self.cot_list_thread, self.login_thread):
+        for thread in (self.cot_list_thread, self.login_thread):
             if thread is not None and thread.isRunning():
                 if not thread.wait(3000):
                     self.set_banner_status(
