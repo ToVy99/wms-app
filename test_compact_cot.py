@@ -64,8 +64,9 @@ class CompactCOTTests(unittest.TestCase):
         payloads = []
         def response(cookie, payload):
             payloads.append(payload.copy())
+            batch = rows[:2] if payload['beg_cut_off_time'] == self.stamp(5, 59) else rows[2:]
             start = (payload['pageno'] - 1) * payload['count']
-            return dict(total=len(rows), list=rows[start:start + payload['count']])
+            return dict(total=len(batch), list=batch[start:start + payload['count']])
         self.api.side_effect = response
         # Run the real worker synchronously to make API scope assertions deterministic.
         with patch.object(m.COTOrderListThread, 'start', lambda thread: thread.run()):
@@ -75,9 +76,9 @@ class CompactCOTTests(unittest.TestCase):
                 original(thread, *args, **kwargs)
             with patch.object(m.COTOrderListThread, '__init__', small_pages):
                 w.cot_buttons['intra20'].click()
-        self.assertEqual([p['pageno'] for p in payloads], [1, 2, 3])
+        self.assertEqual([p['pageno'] for p in payloads], [1, 1, 2])
         self.assertTrue(all(p['order_status_list'] == m.COT_STATUS_GROUPS['total'] for p in payloads))
-        self.assertTrue(all(p['beg_cut_off_time'] == self.stamp(19, 59) for p in payloads))
+        self.assertEqual([p['beg_cut_off_time'] for p in payloads], [self.stamp(5, 59), self.stamp(19, 59), self.stamp(19, 59)])
         self.assertEqual(len(w.cot_current_rows), 3)
         self.assertEqual(w.cot_metric_buttons['pending'].text(), 'Chưa Outbound: 2')
         self.assertEqual(w.cot_metric_buttons['total'].text(), 'Tổng đơn: 3')
@@ -107,6 +108,35 @@ class CompactCOTTests(unittest.TestCase):
             m._filter_purchase_window([{'ctime': self.stamp(3)}], d[2]['purchase_beg'], d[2]['purchase_end'])
         self.assertEqual(m._filter_created_window([{'ctime': self.stamp(9)}],
                         datetime(2026, 10, 4, 4, tzinfo=m.VN_TZ), datetime(2026, 10, 4, 9, tzinfo=m.VN_TZ)), [])
+
+    def test_http_429_stops_without_retry_or_next_page(self):
+        cot = self.window.cot_definition_map['intra_end']
+        self.assertEqual([int(b.timestamp()) for b, e in cot['cutoff_ranges']],
+                         [self.stamp(19, 59), self.stamp(23, 49)])
+        worker = m.COTOrderListThread('test', 'offline', cot, 'total')
+        errors = []
+        worker.error.connect(lambda rid, message: errors.append(message))
+        self.api_patch.stop()
+        with patch.object(m, '_wms_post', side_effect=RuntimeError('HTTP 429: overloaded')) as api:
+            worker.run()
+            self.assertEqual(api.call_count, 1)
+        self.api_patch.start()
+        self.assertEqual(errors, ['HTTP 429: overloaded'])
+
+    def test_repeat_click_does_not_restart_active_request(self):
+        w = self.window
+        class Worker:
+            def isRunning(self): return True
+            def requestInterruption(self): raise AssertionError('Repeated click canceled active load')
+        w.cot_list_thread = Worker()
+        w.cot_current_selection = ('intra03', 'total')
+        w._active_cot_request_id = 'intra03|1'
+        with patch.object(w, '_start_cot_order_thread') as start:
+            w.cot_buttons['intra03'].click()
+            w.reload_cot_order_list()
+            start.assert_not_called()
+        self.assertIsNone(w._pending_cot_list_request)
+        self.assertFalse(self.api.called)
 
     def test_stale_response_cannot_replace_cached_selection(self):
         w = self.window

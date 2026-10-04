@@ -311,18 +311,9 @@ def _wms_post(cookie_str, payload, timeout=15):
     return data
 
 
-def _wms_post_retry(cookie_str, payload, retries=2, timeout=15):
-    last_error = None
-    for attempt in range(retries + 1):
-        try:
-            return _wms_post(cookie_str, payload, timeout=timeout)
-        except WMSAuthError:
-            raise
-        except Exception as e:
-            last_error = e
-            if attempt < retries:
-                time.sleep(0.20 * (attempt + 1))
-    raise last_error or RuntimeError("Lỗi gọi WMS.")
+def _wms_post_retry(cookie_str, payload, retries=0, timeout=15):
+    # Giữ tên hàm cũ; mọi lỗi đều dừng, chỉ người dùng mới bấm tải lại.
+    return _wms_post(cookie_str, payload, timeout=timeout)
 
 
 def _build_wms_payload(cot_def, status_list, pageno=1, count=20, is_get_total=1, channel_override=None):
@@ -407,14 +398,30 @@ class COTOrderListThread(QThread):
         self.cot_def = cot_def
         self.metric_key = metric_key
         self.page_size = page_size
+        self._last_api_started = None
 
-    def _fetch_for_channels(self, channels):
+    def _fetch_page(self, payload):
+        # Các trang/đợt của cùng một lần bấm chạy tuần tự, tối đa 2 lần/giây.
+        if self._last_api_started is not None:
+            while time.monotonic() - self._last_api_started < 0.5:
+                if self.isInterruptionRequested():
+                    return None
+                time.sleep(0.05)
+        if self.isInterruptionRequested():
+            return None
+        self._last_api_started = time.monotonic()
+        return _wms_post_retry(self.cookie_str, payload)
+
+    def _fetch_for_channels(self, channels, cot_query=None):
+        cot_query = cot_query or self.cot_def
         status_list = COT_STATUS_GROUPS[self.metric_key]
         first_payload = _build_wms_payload(
-            self.cot_def, status_list, pageno=1, count=self.page_size,
+            cot_query, status_list, pageno=1, count=self.page_size,
             is_get_total=1, channel_override=channels
         )
-        first = _wms_post_retry(self.cookie_str, first_payload)
+        first = self._fetch_page(first_payload)
+        if first is None:
+            return [], 0
         total = _extract_total(first)
         rows = list(first.get("list") or [])
         loaded = len(rows)
@@ -429,10 +436,12 @@ class COTOrderListThread(QThread):
                 break
 
             payload = _build_wms_payload(
-                self.cot_def, status_list, pageno=page, count=self.page_size,
+                cot_query, status_list, pageno=page, count=self.page_size,
                 is_get_total=0, channel_override=channels
             )
-            data = _wms_post_retry(self.cookie_str, payload)
+            data = self._fetch_page(payload)
+            if data is None:
+                break
             part = data.get("list") or []
             if not isinstance(part, list):
                 part = []
@@ -442,7 +451,6 @@ class COTOrderListThread(QThread):
 
             if not part:
                 break
-            time.sleep(0.04)
 
         return rows, total
 
@@ -451,7 +459,16 @@ class COTOrderListThread(QThread):
             all_rows = []
             total_expected = 0
 
-            if self.cot_def.get("composite_channels"):
+            if self.cot_def.get("cutoff_ranges"):
+                # Một khung Purchase Time có thể có hai đợt bàn giao / Cut-Off.
+                for beg, end in self.cot_def["cutoff_ranges"]:
+                    if self.isInterruptionRequested():
+                        break
+                    query = dict(self.cot_def, beg=beg, end=end)
+                    rows, total = self._fetch_for_channels(self.cot_def.get("channels"), query)
+                    all_rows.extend(rows)
+                    total_expected += total
+            elif self.cot_def.get("composite_channels"):
                 for child_channels in self.cot_def["composite_channels"]:
                     if self.isInterruptionRequested():
                         break
@@ -1710,6 +1727,14 @@ del /F /Q "{backup_exe}" >nul 2>&1
             pick("bulky", "SPX Cồng kềnh", "17–17 (qua ngày)", at(yesterday, 17), at(today, 17), ["50025"],
                  "Cắt Pick 17:00 → Check 17:15 → Pack 17:20 → WIS 17:30"),
         ]
+        defs[2]["cutoff_ranges"] = [
+            (at(today, 5, 59), at(today, 6, 1)),
+            (at(today, 19, 59), at(today, 20, 1)),
+        ]
+        defs[3]["cutoff_ranges"] = [
+            (at(today, 19, 59), at(today, 20, 1)),
+            (at(today, 23, 49), at(today, 23, 51)),
+        ]
         end_day = min(today + timedelta(days=1), max(today, now))
         defs.extend([
             dict(key="ghn_total", group="GHN", button="Tổng GHN", label="GHN · Tổng", beg=today, end=end_day,
@@ -1859,11 +1884,16 @@ del /F /Q "{backup_exe}" >nul 2>&1
             int(cot_def["end"].timestamp()),
             bool(cot_def.get("cutoff")),
             channel_key,
+            tuple((int(b.timestamp()), int(e.timestamp())) for b, e in cot_def.get("cutoff_ranges", [])),
         )
 
     def request_cot_order_list(self, row_key, metric_key="total", force=False):
         cot_def = self.cot_definition_map.get(row_key)
         if cot_def is None:
+            return
+        running = self.cot_list_thread is not None and self.cot_list_thread.isRunning()
+        if running and self._active_cot_request_id is not None and self.cot_current_selection and self.cot_current_selection[0] == row_key:
+            # Bấm nhiều lần (kể cả Tải lại) không tạo thêm yêu cầu đang tải.
             return
         self.cot_current_selection = (row_key, metric_key)
         self._prepare_cot_selection(cot_def)
@@ -1871,7 +1901,6 @@ del /F /Q "{backup_exe}" >nul 2>&1
         self._active_cot_request_id = None
         self._active_cot_cache_key = None
         self._pending_cot_list_request = None
-        running = self.cot_list_thread is not None and self.cot_list_thread.isRunning()
         if running:
             self.cot_list_thread.requestInterruption()
         cookie_str = self.config.get("wms_cookie", "")

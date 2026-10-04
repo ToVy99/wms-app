@@ -6,6 +6,9 @@ Chọn nhóm, ngày và nút COT. Chỉ COT đó được gọi API và tải đ
 Chưa Pick / Check / Pack / WIS / Chưa Outbound / Tổng đơn lọc ngay dữ liệu đã tải.
 Tải lại COT cập nhật dữ liệu của COT đang chọn. Copy / Export theo danh sách đang xem.
 Không tải toàn bộ COT; không gọi WMS khi mở app, đổi nhóm hoặc đổi ngày.
+Không tự tải định kỳ, không tự thử lại khi lỗi (kể cả HTTP 429).
+Bấm lặp COT đang tải không tạo thêm yêu cầu. Các trang tải tuần tự, cách tối thiểu 0,5 giây.
+Bấm lại COT đã tải dùng cache; chỉ nút Tải lại mới cập nhật từ WMS.
 
 KHUNG THEO GIỜ VIỆT NAM:
 SDD: 18:00 ngày trước–04:00, 04:00–09:00, 09:00–13:30, 13:30–18:00.
