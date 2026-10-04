@@ -1,10 +1,11 @@
-IntraCity 2.3.1 - sửa nhận diện đăng nhập WMS
+IntraCity 2.3.2 - sửa nhận diện đăng nhập WMS
 
 EXE Windows x64 đã build và kiểm tra khởi động thành công trên GitHub Actions.
-Lần build: https://github.com/ToVy99/wms-app/actions/runs/37189063039?pr=1
-Tải artifact IntraCity_2.3.1_Windows_x64 rồi giải nén IntraCity_2.3.1.exe.
+Tải artifact IntraCity_2.3.2_Windows_x64 rồi giải nén IntraCity_2.3.2.exe.
 
 Đã sửa:
+- Chờ thêm 5 giây để đổi kho sau khi nhận diện đăng nhập.
+- Lấy cookie sau thời gian đổi kho rồi mới đóng Chrome.
 - Xác nhận bằng đúng hostname WMS và menu hiển thị, không dựa vào SPC_EC.
 - Theo dõi cả tab WMS do SSO mở thêm.
 - Bỏ API probe khỏi bước đăng nhập. API kiểm tra phiên khi tải dữ liệu COT.
@@ -23,13 +24,13 @@ BUILD KHÔNG CẦN MÁY CÁ NHÂN:
 1. Đưa nội dung thư mục IntraCity vào gốc repository GitHub do bạn chọn.
    Giữ cả thư mục .github/workflows.
 2. Trong GitHub, mở Actions -> Build IntraCity Windows EXE -> Run workflow.
-3. Khi job xanh, tải artifact IntraCity_2.3.1_Windows_x64 rồi giải nén EXE.
+3. Khi job xanh, tải artifact IntraCity_2.3.2_Windows_x64 rồi giải nén EXE.
 Workflow dùng máy Windows trên cloud, chỉ có quyền đọc repository.
 
 BUILD TRÊN WINDOWS:
 Cần Python 3.12 64-bit trên máy build. Mở PowerShell trong thư mục này rồi chạy:
 powershell -ExecutionPolicy Bypass -File .\build_windows.ps1
-Đầu ra: dist\IntraCity_2.3.1.exe
+Đầu ra: dist\IntraCity_2.3.2.exe
 
 CHẠY EXE SAU KHI BUILD:
 Windows 10/11 64-bit, có Google Chrome (như máy trong video).

@@ -1,6 +1,7 @@
 import sys
 import os
 import time
+import math
 import json
 import pandas as pd
 import re
@@ -33,7 +34,7 @@ from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.figure import Figure
 
 # ================= CẤU HÌNH PHIÊN BẢN & AUTO-UPDATE =================
-CURRENT_VERSION = "2.3.1_COT_loginfix"
+CURRENT_VERSION = "2.3.2_COT_warehouse5s"
 def _config_file_path():
     if not getattr(sys, "frozen", False):
         return os.path.join(os.path.dirname(os.path.abspath(__file__)), "wms_config.json")
@@ -535,6 +536,7 @@ class WMSLoginThread(QThread):
     login_failed = Signal(str)
     progress = Signal(str)
     LOGIN_TIMEOUT = 180
+    WAREHOUSE_SWITCH_DELAY = 5
 
     @staticmethod
     def _is_logged_in_page(page):
@@ -632,14 +634,21 @@ class WMSLoginThread(QThread):
                         elif recognized is not stable_page:
                             stable_page, stable_since = recognized, time.monotonic()
                         elif time.monotonic() - stable_since >= 1.2:
-                            self.progress.emit("⌛ Đã vào WMS, đang lấy phiên đăng nhập...")
-                            cookies = context.cookies([
-                                "https://wms.ssc.shopee.vn/api/v2/apps/process/outbound/salesorder/search_order"
-                            ])
-                            cookie_str = self._cookie_header(cookies)
-                            if cookie_str:
-                                break
-                            self.progress.emit("⌛ Đã vào WMS, đang chờ cookie của phiên...")
+                            remaining = 1.2 + self.WAREHOUSE_SWITCH_DELAY - (time.monotonic() - stable_since)
+                            if remaining > 0:
+                                self.progress.emit(
+                                    f"⌛ Đã vào WMS — hãy đổi kho. Lấy phiên và đóng Chrome sau {math.ceil(remaining)} giây..."
+                                )
+                            else:
+                                # Lấy cookie sau thời gian đổi kho để giữ phiên mới nhất.
+                                self.progress.emit("⌛ Đang lấy phiên sau khi đổi kho...")
+                                cookies = context.cookies([
+                                    "https://wms.ssc.shopee.vn/api/v2/apps/process/outbound/salesorder/search_order"
+                                ])
+                                cookie_str = self._cookie_header(cookies)
+                                if cookie_str:
+                                    break
+                                self.progress.emit("⌛ Đã vào WMS, đang chờ cookie của phiên...")
                         # Cho Playwright xử lý điều hướng/tab SSO thay vì sleep chặn sự kiện.
                         try:
                             pages[-1].wait_for_timeout(300)
