@@ -9,6 +9,9 @@ on:
       - '.github/workflows/build-windows.yml'
 permissions:
   contents: read
+concurrency:
+  group: wms-windows-${{ github.ref }}
+  cancel-in-progress: true
 jobs:
   build:
     runs-on: windows-latest
@@ -25,8 +28,8 @@ jobs:
       - name: Upload EXE
         uses: actions/upload-artifact@v4
         with:
-          name: IntraCity_2.3.2_Windows_x64
-          path: dist/IntraCity_2.3.2.exe
+          name: IntraCity_Windows_x64
+          path: dist/*.exe
           if-no-files-found: error
           retention-days: 14
       - name: Upload startup verification
