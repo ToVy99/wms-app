@@ -25,8 +25,8 @@ jobs:
       - name: Upload EXE
         uses: actions/upload-artifact@v4
         with:
-          name: IntraCity_2.3.1_Windows_x64
-          path: dist/IntraCity_2.3.1.exe
+          name: IntraCity_2.3.2_Windows_x64
+          path: dist/IntraCity_2.3.2.exe
           if-no-files-found: error
           retention-days: 14
       - name: Upload startup verification
