@@ -1,6 +1,8 @@
 IntraCity 2.3.1 - sửa nhận diện đăng nhập WMS
 
-Gói hiện tại là mã nguồn và cấu hình build. CHƯA CÓ EXE.
+EXE Windows x64 đã build và kiểm tra khởi động thành công trên GitHub Actions.
+Lần build: https://github.com/ToVy99/wms-app/actions/runs/37189063039?pr=1
+Tải artifact IntraCity_2.3.1_Windows_x64 rồi giải nén IntraCity_2.3.1.exe.
 
 Đã sửa:
 - Xác nhận bằng đúng hostname WMS và menu hiển thị, không dựa vào SPC_EC.
@@ -14,7 +16,8 @@ Gói hiện tại là mã nguồn và cấu hình build. CHƯA CÓ EXE.
 - Giữ hai tab COT Dashboard / Excel, các mốc COT và phân trang danh sách đơn.
 
 Kiểm thử: compile, GUI PySide6 offscreen, mô phỏng SSO và timeout đã qua.
-Chưa kiểm thử bằng tài khoản WMS thật hoặc chạy EXE trên Windows thật.
+EXE đã kiểm tra trên Windows: 2 tab, 13 dòng COT, Playwright driver khởi động,
+spinner dừng đúng. Chưa kiểm thử đăng nhập bằng tài khoản WMS thật.
 
 BUILD KHÔNG CẦN MÁY CÁ NHÂN:
 1. Đưa nội dung thư mục IntraCity vào gốc repository GitHub do bạn chọn.
