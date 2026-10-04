@@ -1,13 +1,23 @@
-IntraCity 2.3.3 - COT gọn, tải theo lựa chọn
+IntraCity 2.3.4 - COT gọn, tải theo lựa chọn
+
+Trạng thái: chọn Created / Picked / Checking / Outbound... để xem đúng các đơn của trạng thái đó.
+Số lượng và bộ lọc dùng dữ liệu đã tải, không gọi thêm API.
+Riêng Intra City: % Outbound = Outbound / (tổng đơn duy nhất - Cancel) x 100.
+Mẫu số theo toàn COT hoặc khung nhỏ đang chọn, không đổi khi bấm một trạng thái.
+Trùng WMS Order No chỉ tính một lần. Đơn không có mã vẫn tính riêng.
+Khung 23:00–02:00 kết thúc đúng 02:00; đơn lúc 02:00 thuộc COT 02:00–16:00.
+API được yêu cầu toàn bộ trạng thái trong COT. Tên API trả về được ưu tiên;
+mã chưa có tên giữ nguyên mã và chưa tính % để tránh nhầm đơn Cancel.
 
 CHẠY: Windows 10/11 64-bit có Google Chrome. Không cần Python.
-Mở IntraCity_2.3.3.exe -> Đăng nhập WMS -> có 5 giây đổi kho.
-Chọn nhóm, ngày và nút COT. Chỉ COT đó được gọi API và tải đủ trang.
+Mở IntraCity_2.3.4.exe -> Đăng nhập WMS -> có 5 giây đổi kho.
+Chọn nhóm, ngày và nút COT. Chỉ COT đó được gọi API, yêu cầu 200 đơn/trang và tải đủ trang.
+Nếu WMS trả ít hơn số yêu cầu trong khi vẫn còn nhiều đơn, app báo lỗi thay vì hiện danh sách thiếu.
 Chưa Pick / Check / Pack / WIS / Chưa Outbound / Tổng đơn lọc ngay dữ liệu đã tải.
 Tải lại COT cập nhật dữ liệu của COT đang chọn. Copy / Export theo danh sách đang xem.
 Không tải toàn bộ COT; không gọi WMS khi mở app, đổi nhóm hoặc đổi ngày.
 Không tự tải định kỳ, không tự thử lại khi lỗi (kể cả HTTP 429).
-Bấm lặp COT đang tải không tạo thêm yêu cầu. Các trang tải tuần tự, cách tối thiểu 0,5 giây.
+Bấm lặp COT đang tải không tạo thêm yêu cầu. Các trang tải tuần tự, cách tối thiểu 1 giây.
 Bấm lại COT đã tải dùng cache; chỉ nút Tải lại mới cập nhật từ WMS.
 
 KHUNG THEO GIỜ VIỆT NAM:

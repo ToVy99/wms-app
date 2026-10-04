@@ -34,7 +34,7 @@ from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.figure import Figure
 
 # ================= CẤU HÌNH PHIÊN BẢN & AUTO-UPDATE =================
-CURRENT_VERSION = "2.3.3_COT_compact"
+CURRENT_VERSION = "2.3.4_COT_status_200"
 def _config_file_path():
     if not getattr(sys, "frozen", False):
         return os.path.join(os.path.dirname(os.path.abspath(__file__)), "wms_config.json")
@@ -229,6 +229,8 @@ QFrame#bottomStatusBar {
 # ================= WMS API / COT DASHBOARD =================
 WMS_SEARCH_ORDER_URL = "https://wms.ssc.shopee.vn/api/v2/apps/process/outbound/salesorder/search_order"
 VN_TZ = timezone(timedelta(hours=7))
+WMS_PAGE_SIZE = 200
+WMS_PAGE_INTERVAL_SECONDS = 1.0
 
 COT_STATUS_GROUPS = {
     "pick": "0,9,2",
@@ -247,6 +249,48 @@ COT_METRIC_LABELS = {
     "pending": "Chưa Outbound",
     "total": "Tổng đơn",
 }
+
+# Các mã đang dùng trong bộ lọc WMS cũ; ưu tiên tên do API trả về.
+COT_STATUS_NAMES = dict(zip(
+    COT_STATUS_GROUPS["total"].split(","),
+    ["Created", "Pending Pick", "Picking", "Picked", "Checking", "Checked",
+     "Pre Sorting", "Pre Sorted", "Sorting", "Sorted", "Packing", "Packed", "Shipping", "Outbound"],
+))
+COT_STATUS_ORDER = ["Created", "Pending Pick", "Picking", "Picked", "Pick Fail", "Checking",
+                    "Checked", "Pre Sorting", "Pre Sorted", "Sorting", "Sorted", "Packing",
+                    "Packed", "Shipping", "Outbound", "Cancel"]
+
+
+def _order_status_name(row):
+    for key in ("order_status_name", "status_name", "order_status_text", "status_text", "status", "order_status"):
+        value = row.get(key)
+        if not isinstance(value, str) or not value.strip():
+            continue
+        name = value.strip()
+        if name.casefold() in ("cancelled", "canceled", "cancel"):
+            return "Cancel"
+        for known in COT_STATUS_ORDER:
+            if name.casefold().replace("_", " ") == known.casefold():
+                return known
+    value = row.get("order_status", row.get("status", ""))
+    try:
+        code = str(int(value))
+    except (ValueError, TypeError):
+        return str(value).strip() or "Chưa có trạng thái"
+    # Không đoán mã Cancel/Pick Fail chưa có trong tài liệu nguồn.
+    return COT_STATUS_NAMES.get(code, f"Mã trạng thái {code}")
+
+
+def _dedupe_cot_orders(rows):
+    result, seen = [], set()
+    for row in rows:
+        key = str(row.get("order_number") or "").strip()
+        if key and key in seen:
+            continue
+        if key:
+            seen.add(key)
+        result.append(row)
+    return result
 
 
 class WMSAuthError(RuntimeError):
@@ -284,6 +328,8 @@ def _wms_post(cookie_str, payload, timeout=15):
             pass
         if e.code in (401, 403):
             raise WMSAuthError(f"WMS từ chối phiên đăng nhập (HTTP {e.code}). Vui lòng đăng nhập lại.")
+        if e.code == 429:
+            raise RuntimeError("HTTP 429: WMS đang giới hạn yêu cầu. Đã dừng tải, không tự thử lại.")
         raise RuntimeError(f"HTTP {e.code}: {body[:300] or e.reason}")
     except urllib.error.URLError as e:
         raise RuntimeError(f"Không kết nối được WMS: {e.reason}")
@@ -316,7 +362,7 @@ def _wms_post_retry(cookie_str, payload, retries=0, timeout=15):
     return _wms_post(cookie_str, payload, timeout=timeout)
 
 
-def _build_wms_payload(cot_def, status_list, pageno=1, count=20, is_get_total=1, channel_override=None):
+def _build_wms_payload(cot_def, status_list, pageno=1, count=WMS_PAGE_SIZE, is_get_total=1, channel_override=None):
     payload = {
         "order_status_list": status_list,
         "pageno": int(pageno),
@@ -391,7 +437,7 @@ class COTOrderListThread(QThread):
     auth_error = Signal(str, str)
     error = Signal(str, str)
 
-    def __init__(self, request_id, cookie_str, cot_def, metric_key, page_size=20):
+    def __init__(self, request_id, cookie_str, cot_def, metric_key, page_size=WMS_PAGE_SIZE):
         super().__init__()
         self.request_id = request_id
         self.cookie_str = cookie_str
@@ -401,20 +447,26 @@ class COTOrderListThread(QThread):
         self._last_api_started = None
 
     def _fetch_page(self, payload):
-        # Các trang/đợt của cùng một lần bấm chạy tuần tự, tối đa 2 lần/giây.
+        # Các trang/đợt của cùng một lần bấm chạy tuần tự, tối đa 1 lần/giây.
         if self._last_api_started is not None:
-            while time.monotonic() - self._last_api_started < 0.5:
+            while time.monotonic() - self._last_api_started < WMS_PAGE_INTERVAL_SECONDS:
                 if self.isInterruptionRequested():
                     return None
                 time.sleep(0.05)
         if self.isInterruptionRequested():
             return None
         self._last_api_started = time.monotonic()
-        return _wms_post_retry(self.cookie_str, payload)
+        try:
+            return _wms_post_retry(self.cookie_str, payload)
+        except WMSAuthError:
+            raise
+        except Exception as exc:
+            raise RuntimeError(f"{exc} (trang {payload['pageno']}, yêu cầu {payload['count']} đơn/trang)") from exc
 
     def _fetch_for_channels(self, channels, cot_query=None):
         cot_query = cot_query or self.cot_def
-        status_list = COT_STATUS_GROUPS[self.metric_key]
+        # Không loại Cancel/Pick Fail trước khi tính thống kê trạng thái.
+        status_list = "" if self.metric_key == "total" else COT_STATUS_GROUPS[self.metric_key]
         first_payload = _build_wms_payload(
             cot_query, status_list, pageno=1, count=self.page_size,
             is_get_total=1, channel_override=channels
@@ -429,6 +481,11 @@ class COTOrderListThread(QThread):
 
         if total <= loaded:
             return rows, total
+        if loaded < self.page_size:
+            raise RuntimeError(
+                f"WMS trả {loaded}/{self.page_size} đơn ở trang 1 dù báo tổng {total:,} đơn. "
+                "Đã dừng để tránh bỏ sót đơn; cần kiểm tra giới hạn phân trang của API."
+            )
 
         total_pages = (total + self.page_size - 1) // self.page_size
         for page in range(2, total_pages + 1):
@@ -1392,6 +1449,21 @@ del /F /Q "{backup_exe}" >nul 2>&1
         self.cot_metric_buttons["total"].setChecked(True)
         cot_root.addLayout(metric_row)
 
+        status_row = QHBoxLayout()
+        status_row.addWidget(QLabel("Trạng thái:"))
+        self.cotStatusFilter = QComboBox()
+        self.cotStatusFilter.setMinimumWidth(250)
+        self.cotStatusFilter.setMaxVisibleItems(18)
+        self.cotStatusFilter.addItem("Tất cả trạng thái", "")
+        self.cotStatusFilter.setEnabled(False)
+        self.cotStatusFilter.currentIndexChanged.connect(self._select_cot_status)
+        status_row.addWidget(self.cotStatusFilter)
+        self.lblCotPercent = QLabel("")
+        self.lblCotPercent.setStyleSheet("color: #a6e3a1; font-weight: bold;")
+        self.lblCotPercent.setWordWrap(True)
+        status_row.addWidget(self.lblCotPercent, 1)
+        cot_root.addLayout(status_row)
+
         self.cot_order_model = PandasModel()
         self.cotOrderTable = QTableView()
         self.cotOrderTable.setModel(self.cot_order_model)
@@ -1696,16 +1768,16 @@ del /F /Q "{backup_exe}" >nul 2>&1
         aha = ["50033", "50044"]
         sdd = ["50051"]
         defs = [
-            intra("intra03", "COT 1 · 20–23", at(yesterday, 20), at(yesterday, 23), 3, 0,
+            intra("intra03", "COT 1 · 20:00–23:00", at(yesterday, 20), at(yesterday, 23), 3, 0,
                   "Cắt Pick 23:00 → Check 23:15 → Pack 00:00 → WIS 02:00"),
-            intra("intra06", "COT 2 · 23–02", at(yesterday, 23), at(today, 2), 6, 0,
+            intra("intra06", "COT 2 · 23:00–02:00", at(yesterday, 23), at(today, 2), 6, 0,
                   "Cắt Pick 02:00 → Check 02:15 → Pack 03:00 → WIS 05:00"),
-            intra("intra20", "COT 3 · 02–16", at(today, 2), at(today, 16), 20, 0,
+            intra("intra20", "COT 3 · 02:00–16:00", at(today, 2), at(today, 16), 20, 0,
                   "Khung 02–05: WIS 06:00 · Khung 05–16: WIS 19:00", [
                       slot("02–05", at(today, 2), at(today, 5), "Cắt Pick 05:00 → Check 05:15 → Pack 05:30 → WIS 06:00"),
                       slot("05–16", at(today, 5), at(today, 16), "Cắt Pick 16:00 → Check 16:15 → Pack 16:30 → WIS 19:00"),
                   ]),
-            intra("intra_end", "COT 4 · 16–20", at(today, 16), at(today, 20), 23, 50,
+            intra("intra_end", "COT 4 · 16:00–20:00", at(today, 16), at(today, 20), 23, 50,
                   "Khung 16–18: WIS 19:00 · Khung 18–20: WIS 23:00", [
                       slot("16–18", at(today, 16), at(today, 18), "Cắt Pick 18:00 → Check 18:15 → Pack 18:30 → WIS 19:00"),
                       slot("18–20", at(today, 18), at(today, 20), "Cắt Pick 20:00 → Check 20:15 → Pack 20:30 → WIS 23:00"),
@@ -1757,6 +1829,7 @@ del /F /Q "{backup_exe}" >nul 2>&1
                 item.widget().deleteLater()
 
     def _refresh_cot_picker(self, *args):
+        self._reset_cot_status()
         self._cot_data_ready = False
         self._active_cot_request_id = None
         self._active_cot_cache_key = None
@@ -1797,6 +1870,7 @@ del /F /Q "{backup_exe}" >nul 2>&1
         self.set_banner_status(False, custom_msg="Chọn một COT để tải dữ liệu.")
 
     def _prepare_cot_selection(self, cot_def):
+        self._reset_cot_status()
         self._cot_data_ready = False
         self.cot_active_slot = None
         self.cot_current_rows = []
@@ -1843,32 +1917,77 @@ del /F /Q "{backup_exe}" >nul 2>&1
     def _select_cot_metric(self, metric_key):
         if not self.cot_current_selection:
             return
+        self.cot_selected_status = ""
         self.cot_current_selection = (self.cot_current_selection[0], metric_key)
+        self._show_cot_scope()
+
+    def _reset_cot_status(self):
+        self.cot_selected_status = ""
+        self.cotStatusFilter.blockSignals(True)
+        self.cotStatusFilter.clear()
+        self.cotStatusFilter.addItem("Tất cả trạng thái", "")
+        self.cotStatusFilter.blockSignals(False)
+        self.cotStatusFilter.setEnabled(False)
+        self.lblCotPercent.clear()
+        self.lblCotPercent.hide()
+
+    def _select_cot_status(self, index):
+        if not self.cot_current_selection or not self._cot_data_ready:
+            return
+        self.cot_selected_status = self.cotStatusFilter.currentData() or ""
+        self.cot_current_selection = (self.cot_current_selection[0], "total")
+        self.searchCotBox.clear()
         self._show_cot_scope()
 
     def _show_cot_scope(self):
         if not self.cot_current_selection or not self._cot_data_ready:
             return
         cot_key, metric_key = self.cot_current_selection
-        rows = self.cot_current_rows
+        rows = _dedupe_cot_orders(self.cot_current_rows)
         if self.cot_active_slot is not None:
             slot = self.cot_definition_map[cot_key]["slots"][self.cot_active_slot]
             rows = _filter_purchase_window(rows, slot["beg"], slot["end"])
-        def status(row):
-            value = row.get("order_status", row.get("status", ""))
-            try:
-                return str(int(value))
-            except (ValueError, TypeError):
-                return str(value)
+        counts = {}
+        for row in rows:
+            name = _order_status_name(row)
+            counts[name] = counts.get(name, 0) + 1
+        intra = self.cot_definition_map[cot_key]["group"] == "Intra City"
+        total_valid = len(rows) - counts.get("Cancel", 0)
+        unknown = any(name.startswith("Mã trạng thái ") or name == "Chưa có trạng thái" for name in counts)
+        self.lblCotPercent.setVisible(intra)
+        if intra:
+            outbound = counts.get("Outbound", 0)
+            if unknown:
+                self.lblCotPercent.setText("Chưa tính %: API có mã trạng thái chưa xác định tên.")
+            else:
+                percent = outbound / total_valid * 100 if total_valid else 0
+                self.lblCotPercent.setText(f"Tổng hợp lệ: {total_valid:,} · Outbound: {outbound:,} · Tỷ lệ: {percent:.2f}%")
+        self.cotStatusFilter.blockSignals(True)
+        self.cotStatusFilter.clear()
+        self.cotStatusFilter.addItem(f"Tất cả trạng thái: {len(rows):,}", "")
+        for name in COT_STATUS_ORDER + sorted(set(counts) - set(COT_STATUS_ORDER)):
+            qty = counts.get(name, 0)
+            label = f"{name}: {qty:,} đơn"
+            if unknown and name in ("Cancel", "Pick Fail") and not qty:
+                label = f"{name}: chưa xác định"
+            elif intra and not unknown and name != "Cancel":
+                pct = qty / total_valid * 100 if total_valid else 0
+                label += f" ({pct:.2f}%)"
+            self.cotStatusFilter.addItem(label, name)
+        self.cotStatusFilter.setCurrentIndex(max(0, self.cotStatusFilter.findData(self.cot_selected_status)))
+        self.cotStatusFilter.blockSignals(False)
+        self.cotStatusFilter.setEnabled(True)
         for key, button in self.cot_metric_buttons.items():
-            allowed = set(COT_STATUS_GROUPS[key].split(","))
-            count = len(rows) if key == "total" else sum(status(r) in allowed for r in rows)
+            allowed = {COT_STATUS_NAMES[c] for c in COT_STATUS_GROUPS[key].split(",")}
+            count = len(rows) if key == "total" else sum(_order_status_name(r) in allowed for r in rows)
             button.setText(f"{COT_METRIC_LABELS[key]}: {count:,}")
             button.setEnabled(True)
         self.cot_metric_buttons[metric_key].setChecked(True)
         if metric_key != "total":
-            allowed = set(COT_STATUS_GROUPS[metric_key].split(","))
-            rows = [r for r in rows if status(r) in allowed]
+            allowed = {COT_STATUS_NAMES[c] for c in COT_STATUS_GROUPS[metric_key].split(",")}
+            rows = [r for r in rows if _order_status_name(r) in allowed]
+        if self.cot_selected_status:
+            rows = [r for r in rows if _order_status_name(r) == self.cot_selected_status]
         self._display_cot_orders(self._orders_to_dataframe(rows), len(rows))
         if self.searchCotBox.text():
             self.search_cot_orders()
@@ -1931,7 +2050,7 @@ del /F /Q "{backup_exe}" >nul 2>&1
         self.set_banner_status(True, custom_msg=f"⌛ Đang tải {cot_def['label']}...")
         self.cot_list_thread = COTOrderListThread(
             request_id=request_id, cookie_str=self.config.get("wms_cookie", ""),
-            cot_def=cot_def, metric_key="total", page_size=20,
+            cot_def=cot_def, metric_key="total", page_size=WMS_PAGE_SIZE,
         )
         self.cot_list_thread.list_ready.connect(self._on_cot_list_ready)
         self.cot_list_thread.progress.connect(self._on_cot_list_progress)
@@ -1943,7 +2062,7 @@ del /F /Q "{backup_exe}" >nul 2>&1
     def _on_cot_list_progress(self, request_id, loaded, total):
         if request_id != self._active_cot_request_id:
             return
-        self.lblCotOrderCount.setText(f"⏳ Đang tải: {loaded:,}/{total:,} đơn")
+        self.lblCotOrderCount.setText(f"⏳ Đang tải: {loaded:,}/{total:,} đơn · {WMS_PAGE_SIZE} đơn/trang")
 
     def _on_cot_list_ready(self, request_id, rows, total_expected):
         if request_id != self._active_cot_request_id:
@@ -1974,7 +2093,7 @@ del /F /Q "{backup_exe}" >nul 2>&1
         pending = self._pending_cot_list_request
         self._pending_cot_list_request = None
         if not pending and not self._cot_data_ready:
-            self.set_banner_status(False, custom_msg=self.lblCotOrderCount.text())
+            self.set_banner_status(False, success=not self.lblCotOrderCount.text().startswith("❌"), custom_msg=self.lblCotOrderCount.text())
         if pending:
             row_key, metric_key, force = pending
             QTimer.singleShot(
@@ -2027,6 +2146,7 @@ del /F /Q "{backup_exe}" >nul 2>&1
                     except Exception:
                         value = str(value)
                 out[display_key] = value
+            out["Status"] = _order_status_name(raw)
             normalized.append(out)
 
         df = pd.DataFrame(normalized)

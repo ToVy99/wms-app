@@ -26,6 +26,11 @@ def main():
                 assert window.cot_list_thread is None
                 assert len(window.cot_metric_buttons) == 6
                 assert window.cot_current_selection is None
+                assert intra.WMS_PAGE_SIZE == 200
+                assert window.cotStatusFilter.count() == 1
+                assert not window.cotStatusFilter.isEnabled()
+                assert window.lblCotPercent.isHidden()
+                assert '23:00–02:00' in window.cot_buttons['intra06'].text()
                 window.cotService.setCurrentText('SDD')
                 assert [b.text() for b in window.cot_buttons.values()] == ['18–04', '04–09', '09–13:30', '13:30–18']
                 window.cotService.setCurrentText('Intra City')
@@ -41,6 +46,8 @@ def main():
                 window.grab().save('smoke-gui.png')
                 result = {'passed': True, 'tabs': 2, 'cot_buttons': 4,
                           'sdd_pick_windows': 4, 'startup_wms_requests': 0,
+                          'requested_page_size': intra.WMS_PAGE_SIZE,
+                          'status_filter': 'ready', 'intra_percentage': 'local only',
                           'large_cot_table': 'removed',
                           'playwright_driver': 'started', 'spinner': 'stopped'}
             except Exception as exc:

@@ -77,7 +77,7 @@ class CompactCOTTests(unittest.TestCase):
             with patch.object(m.COTOrderListThread, '__init__', small_pages):
                 w.cot_buttons['intra20'].click()
         self.assertEqual([p['pageno'] for p in payloads], [1, 1, 2])
-        self.assertTrue(all(p['order_status_list'] == m.COT_STATUS_GROUPS['total'] for p in payloads))
+        self.assertTrue(all(p['order_status_list'] == '' for p in payloads))
         self.assertEqual([p['beg_cut_off_time'] for p in payloads], [self.stamp(5, 59), self.stamp(19, 59), self.stamp(19, 59)])
         self.assertEqual(len(w.cot_current_rows), 3)
         self.assertEqual(w.cot_metric_buttons['pending'].text(), 'Chưa Outbound: 2')
@@ -121,7 +121,88 @@ class CompactCOTTests(unittest.TestCase):
             worker.run()
             self.assertEqual(api.call_count, 1)
         self.api_patch.start()
-        self.assertEqual(errors, ['HTTP 429: overloaded'])
+        self.assertEqual(errors, ['HTTP 429: overloaded (trang 1, yêu cầu 200 đơn/trang)'])
+
+    def test_450_orders_use_three_200_order_requests(self):
+        w = self.window
+        w.cotService.setCurrentText('SDD')
+        rows = [dict(order_number=f'ORDER-{i}', order_status=0, ctime=self.stamp(6)) for i in range(450)]
+        payloads = []
+        request_times = []
+        def response(cookie, payload):
+            payloads.append(payload.copy())
+            request_times.append(m.time.monotonic())
+            start = (payload['pageno'] - 1) * payload['count']
+            return dict(total=len(rows), list=rows[start:start + payload['count']])
+        self.api.side_effect = response
+        with patch.object(m.COTOrderListThread, 'start', lambda thread: thread.run()):
+            w.cot_buttons['sdd04_09'].click()
+        self.assertEqual([(p['pageno'], p['count'], p['is_get_total']) for p in payloads],
+                         [(1, 200, 1), (2, 200, 0), (3, 200, 0)])
+        self.assertTrue(all(b-a >= m.WMS_PAGE_INTERVAL_SECONDS for a,b in zip(request_times, request_times[1:])))
+        self.assertEqual([r['order_number'] for r in w.cot_current_rows], [r['order_number'] for r in rows])
+        w.cot_buttons['sdd04_09'].click()
+        self.assertEqual(len(payloads), 3)
+
+    def test_server_clamped_page_is_not_shown_as_complete(self):
+        w = self.window
+        w.cotService.setCurrentText('SDD')
+        self.api.side_effect = lambda cookie, payload: dict(total=450, list=[dict(ctime=self.stamp(6))]*20)
+        with patch.object(m.COTOrderListThread, 'start', lambda thread: thread.run()):
+            w.cot_buttons['sdd04_09'].click()
+        self.assertEqual(self.api.call_count, 1)
+        self.assertIn('20/200', w.lblCotOrderCount.text())
+        self.assertFalse(w._cot_data_ready)
+        self.assertEqual(w.cot_cache, {})
+
+    def test_picked_seven_and_intra_percent_exclude_cancel_and_duplicates(self):
+        w = self.window
+        cot = w.cot_definition_map['intra03']
+        rows = [dict(order_number=f'P-{i}', order_status=3, purchase_time=self.stamp(21, day=3)) for i in range(7)]
+        rows += [dict(order_number=f'O-{i}', order_status=8, purchase_time=self.stamp(21, day=3)) for i in range(3)]
+        rows += [dict(order_number='C-1', status_name='Cancelled', purchase_time=self.stamp(21, day=3)), rows[0].copy()]
+        w.cot_cache[w._cot_cache_key(cot, 'total')] = (rows, len(rows))
+        w.cot_buttons['intra03'].click()
+        self.assertIn('Tổng hợp lệ: 10', w.lblCotPercent.text())
+        self.assertIn('Tỷ lệ: 30.00%', w.lblCotPercent.text())
+        i = w.cotStatusFilter.findData('Picked')
+        self.assertEqual(w.cotStatusFilter.itemText(i), 'Picked: 7 đơn (70.00%)')
+        w.cotStatusFilter.setCurrentIndex(i)
+        self.assertEqual(w.cot_order_model._data['WMS Order No'].tolist(), [f'P-{i}' for i in range(7)])
+        self.assertEqual(set(w.cot_order_model._data['Status']), {'Picked'})
+        self.assertIn('Tỷ lệ: 30.00%', w.lblCotPercent.text())
+        w.cotStatusFilter.setCurrentIndex(w.cotStatusFilter.findData('Cancel'))
+        self.assertEqual(w.cot_order_model._data['WMS Order No'].tolist(), ['C-1'])
+        self.assertFalse(self.api.called)
+        w.cotService.setCurrentText('SDD')
+        self.assertTrue(w.lblCotPercent.isHidden())
+
+    def test_exact_two_am_boundary_and_subslot_statistics(self):
+        w = self.window
+        before, after = w.cot_definition_map['intra06'], w.cot_definition_map['intra20']
+        rows = [dict(order_number=str(i), order_status=3, purchase_time=t)
+                for i,t in enumerate([self.stamp(2)-1, self.stamp(2), self.stamp(2,59), self.stamp(5)])]
+        self.assertEqual([r['order_number'] for r in m._filter_purchase_window(rows, before['purchase_beg'], before['purchase_end'])], ['0'])
+        selected = m._filter_purchase_window(rows, after['purchase_beg'], after['purchase_end'])
+        self.assertEqual([r['order_number'] for r in selected], ['1','2','3'])
+        w.cot_cache[w._cot_cache_key(after, 'total')] = (selected, 3)
+        w.cot_buttons['intra20'].click()
+        w._select_cot_slot(0)
+        self.assertIn('Tổng hợp lệ: 2', w.lblCotPercent.text())
+        w.cotStatusFilter.setCurrentIndex(w.cotStatusFilter.findData('Picked'))
+        self.assertEqual(w.cot_order_model._data['WMS Order No'].tolist(), ['1','2'])
+        self.assertFalse(self.api.called)
+
+    def test_unknown_numeric_status_does_not_guess_cancel_or_percentage(self):
+        w = self.window
+        cot = w.cot_definition_map['intra03']
+        rows = [dict(order_number='UNKNOWN', order_status=999, purchase_time=self.stamp(21, day=3))]
+        w.cot_cache[w._cot_cache_key(cot, 'total')] = (rows, 1)
+        w.cot_buttons['intra03'].click()
+        self.assertIn('Chưa tính %', w.lblCotPercent.text())
+        w.cotStatusFilter.setCurrentIndex(w.cotStatusFilter.findData('Mã trạng thái 999'))
+        self.assertEqual(w.cot_order_model._data['WMS Order No'].tolist(), ['UNKNOWN'])
+        self.assertEqual(m._order_status_name(dict(order_status=999, status_name='Cancel')), 'Cancel')
 
     def test_repeat_click_does_not_restart_active_request(self):
         w = self.window
