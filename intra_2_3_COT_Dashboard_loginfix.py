@@ -34,7 +34,7 @@ from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.figure import Figure
 
 # ================= CẤU HÌNH PHIÊN BẢN & AUTO-UPDATE =================
-CURRENT_VERSION = "2.4.0_Chrome_Web14"
+CURRENT_VERSION = "2.4.1_Chrome_Native14"
 def _config_file_path():
     if not getattr(sys, "frozen", False):
         return os.path.join(os.path.dirname(os.path.abspath(__file__)), "wms_config.json")
@@ -893,7 +893,7 @@ del /F /Q "{backup_exe}" >nul 2>&1
         # ==============================================================
         self.cotTab = ChromeCotTab(self.config, save_config, self)
         self.cotTab.bridge.sessionChanged.connect(self._chrome_session_changed)
-        self.mainTabs.addTab(self.cotTab, "⚡ COT · Web v1.4")
+        self.mainTabs.addTab(self.cotTab, "⚡ COT")
 
         # ==============================================================
         # TAB 2: DASHBOARD EXCEL HIỆN CÓ
@@ -1614,7 +1614,7 @@ del /F /Q "{backup_exe}" >nul 2>&1
 
     def closeEvent(self, event):
         self._pending_load = None
-        if not self.cotTab.bridge.stop():
+        if (self.cotTab.parser and self.cotTab.parser.isRunning()) or not self.cotTab.bridge.stop():
             self.set_banner_status(True, custom_msg="Đang dừng tác vụ Chrome, hãy đóng app lại sau ít giây...")
             event.ignore()
             return

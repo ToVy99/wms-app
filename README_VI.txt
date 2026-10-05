@@ -1,47 +1,35 @@
-IntraCity 2.4.0 — Web v1.4 trong app, gọi WMS qua Chrome
+INTRACITY 2.4.1 — APP GỌN, LOGIC COT WEB 1.4
 
-CHẠY: Windows 10/11 64-bit có Google Chrome. Không cần Python.
-1. Mở IntraCity_2.4.0.exe, bấm Đăng nhập WMS.
-2. Đăng nhập và chọn kho trong Chrome vừa mở. Chrome được giữ chạy.
-3. Trong app chọn ngày, nhóm và COT, rồi bấm Tải dữ liệu.
-4. App tạo một Export WMS, kiểm tra tiến độ mỗi 3 giây trong tối đa 3 phút,
-   tải Excel và đọc toàn bộ đơn từ file; không tải lại danh sách đơn theo trang.
-5. Bấm trạng thái để xem đơn; Wave Type/OBVN/Picking ID/BSK lấy từ Excel.
-   Như web v1.4, bấm trạng thái còn nạp Area qua search_order, 200 đơn/trang,
-   tối đa 10 trang. Area được lưu trong lượt dữ liệu hiện tại, không tự cập nhật.
-   Các trang Area cách nhau 1 giây. Nếu trên 2000 đơn, app báo Area giới hạn.
-6. Copy OBVN, chọn đơn, xem/copy Picking ID và BSK như trên web v1.4.
-7. Cài đặt COT cho phép sửa tên/giờ, lưu trên máy.
+Chạy IntraCity_2.4.1.exe trên Windows 10/11 64-bit có Google Chrome.
+Không cần cài Python. Đăng nhập WMS → đăng nhập và chọn kho trong Chrome → trở lại app chọn nhóm, ngày và nút COT → Tải dữ liệu.
+Chrome giữ mở để đổi kho. Khi đổi kho, bấm Tải dữ liệu để thay bộ đơn.
 
-Mở app/đổi ngày/đổi nhóm/đổi COT không tự gọi API.
-Khi đổi khung, dữ liệu cũ được xóa để tránh hiện nhầm COT.
-Lỗi HTTP 429 dừng tác vụ, không tự thử lại.
-Tất cả API và tải report thực hiện bằng fetch trong tab Chrome WMS,
-credentials: include; không sao chép cookie để gửi request Python.
-Chrome mở không đồng nghĩa đã đăng nhập: cần đăng nhập và chọn kho trước.
-Nếu đóng Chrome, bấm Đăng nhập WMS để mở phiên mới và đăng nhập lại.
-App không lưu cookie WMS mới; chỉ lưu cài đặt. Đóng app sẽ đóng Chrome do app mở.
+Giao diện COT dùng điều khiển app trực tiếp; bỏ QtWebEngine và bản sao giao diện web để giảm dung lượng EXE.
+Giữ tab Excel/Outbound cũ. Giữ logic và luồng API web 1.4:
+- Một Export cho khung COT đang chọn; tải report một lần, gom WMS Order No, loại Cancel.
+- API chạy trong tab Chrome WMS đã đăng nhập. Không lấy cookie ra Python.
+- Không mở Chrome hoặc gọi WMS khi khởi động, đổi ngày, đổi COT, nhóm.
+- Không tự tải lại, không thử lại lỗi 429. Chỉ kiểm tra tiến độ Export sau lượt tải do người dùng bấm: mỗi 3 giây, tối đa 60 lần.
+- Bấm trạng thái hiện đúng các đơn trong trạng thái, nạp thêm Area 200 đơn/trang, cách nhau 1 giây, tối đa 10 trang theo giới hạn WMS. Cache Area trong bộ đơn; số lượng toàn bộ đơn vẫn lấy từ Export.
+- Lọc Area/Wave và Copy OBVN/Picking ID/BSK thực hiện trên dữ liệu đã tải.
+- Chọn các đơn đang hiện hoặc chọn từng đơn để Copy/Picking; nếu chưa chọn, dùng toàn bộ các đơn đang hiện.
+- Outbound % = Outbound / tổng đơn hợp lệ. Wave % = số đơn Wave / số đơn trạng thái đang chọn, giống web 1.4.
+- Có nút Khung giờ để sửa tên, giờ và khôi phục mặc định. Cài đặt cũ của bản 2.4.0 được giữ.
 
-LOGIC WEB V1.4:
-- Intra: SPX Express / SPX Express NDD - Trong Ngày và Hà Nội / Thành phố Hà Nội.
-- AhaMove: Ahamove / Ahamove SBS, nhận hậu tố - Trong Ngày; không lọc tỉnh.
-- SDD: SPX Express SBS Trong Ngày (kể cả biến thể dấu gạch); không lọc tỉnh.
-- SPX CK: SPX - Hàng Cồng Kềnh; không lọc tỉnh. Không còn GHN.
-- Gom theo WMS Order No, gom SN/Picking ID/Device ID/Basket ID, loại Cancel.
-- Bộ lọc Export theo Create Time và extra_data giống web v1.4.
-- Ngày chọn là ngày bắt đầu khung; khung qua đêm kết thúc hôm sau.
-  Riêng SPX CK: 17h hôm trước đến 17h ngày chọn.
-- Intra: 20–23, 23–02 (+1), 02–16, 16–20.
-- AhaMove: 08–13, 13–18, 18–08 (+1).
-- SDD: 18–04 (+1), 04–09, 09–13:30, 13:30–18.
-- Status theo web: 0 Created, 1 Pending Pick, 2 Picking, 3 Picked, 4 Pick Fail,
-  5 Checking, 6 Checked, 7 Pre Sorting, 8 Pre Sorted, 9 Sorting, 10 Sorted,
-  11 Packing, 12 Packed, 13 Shipping, 14 Outbound, 15 Cancel.
-- Tiến độ và Wave Type % giữ như web v1.4; Outbound / tổng OBVN sau loại Cancel.
+GIỜ MẶC ĐỊNH — GIỜ CHÍNH XÁC, KHÔNG CỘNG 59 PHÚT
+Intra: 20–23; 23–02 hôm sau; 02–16; 16–20.
+AhaMove: 08–13; 13–18; 18–08 hôm sau.
+SDD: 18–04 hôm sau; 04–09; 09–13:30; 13:30–18.
+SPX CK: 17h ngày trước → 17h ngày đang chọn.
+Ngày được hiểu như web 1.4: ngày bắt đầu với khung qua đêm, ngày kết thúc với SPX CK. Sử dụng múi giờ Windows; tại Việt Nam cần đặt giờ Việt Nam.
 
-Tab Excel / Outbound của app cũ vẫn dùng được.
-Cấu hình ở %LOCALAPPDATA%\IntraCity\wms_config.json.
-BUILD: Python 3.12 Windows 64-bit, chạy build_windows.ps1.
-KIỂM TRA: renderer thật đọc XLSX, 2112 đơn qua một Export, lọc New 3PL/tỉnh,
-Cancel, dedupe, Wave Type, Picking/BSK, cài đặt/copy; EXE kiểm tra Chrome fetch
-và cookie với dữ liệu giả lập, không dùng tài khoản WMS thực tế.
+BỘ LỌC REPORT — NEW 3PL
+Intra: SPX Express / SPX Express NDD - Trong Ngày, Buyer State Hà Nội hoặc Thành phố Hà Nội.
+AhaMove: Ahamove / Ahamove SBS, nhận hậu tố sau dấu gạch, không giới hạn tỉnh.
+SDD: SPX Express SBS Trong Ngày và biến thể dấu gạch/hậu tố, không giới hạn tỉnh.
+SPX CK: SPX - Hàng Cồng Kềnh, không giới hạn tỉnh.
+
+BUILD
+Python 3.12 64-bit trên Windows → chạy build_windows.ps1.
+9 kiểm thử logic/UI trước khi build; kiểm tra EXE thật với Chrome và API giả lập sau build, không gọi WMS thật trong kiểm thử.
+Đăng nhập/kho WMS thực tế cần kiểm tra bằng tài khoản của người dùng.
