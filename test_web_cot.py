@@ -140,8 +140,8 @@ class WebCotTests(unittest.TestCase):
         result=self.async_js("const old=get;get=async()=>({list:[{task_id:'ONE',ctime:100},{task_id:'TWO',ctime:100}]});try{await waitExport(new Set(),100);return false}catch(e){return e.message.includes('nhiều Export')}finally{get=old}")
         self.assertTrue(result)
         self.assertIn("resp.status===429",FETCH_JS)
-        self.assertNotIn('urllib.request',(Path(__file__).parent/'chrome_cot.py').read_text())
-        self.assertNotIn('COTOrderListThread',(Path(__file__).parent/'intra_2_3_COT_Dashboard_loginfix.py').read_text())
+        self.assertNotIn('urllib.request',(Path(__file__).parent/'chrome_cot.py').read_text(encoding='utf-8'))
+        self.assertNotIn('COTOrderListThread',(Path(__file__).parent/'intra_2_3_COT_Dashboard_loginfix.py').read_text(encoding='utf-8'))
 
     def test_07_bridge_disconnected_validation_storage_clipboard(self):
         bridge=NativeBridge({},lambda c:True)
