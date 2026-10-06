@@ -58,6 +58,26 @@ class NativeTests(unittest.TestCase):
         with zipfile.ZipFile(out,'w') as z:z.writestr('report.xlsx',raw)
         for k,expected in [('intra',[]),('aha',['A','B']),('sdd',['S']),('spxck',['K'])]:self.assertEqual([o['order_number'] for o in parse_report(out.getvalue(),'x.zip',k)['orders']],expected)
         self.assertEqual(parse_report(fixture([]),'x.xlsx','intra')['orders'],[])
+    def test_wms_incorrect_a1_dimension_reads_all_columns_and_rows(self):
+        import re
+        from openpyxl import load_workbook
+        original=fixture([[f'OB{i}','Picked','SPX Express','Hà Nội',f'SN{i}'] for i in range(2112)])
+        out=io.BytesIO()
+        with zipfile.ZipFile(io.BytesIO(original)) as src, zipfile.ZipFile(out,'w',zipfile.ZIP_DEFLATED) as dst:
+            for item in src.infolist():
+                data=src.read(item.filename)
+                if item.filename=='xl/worksheets/sheet1.xml':
+                    data=re.sub(rb'<dimension ref="[^"]+"',b'<dimension ref="A1"',data)
+                dst.writestr(item,data)
+        broken=out.getvalue()
+        wb=load_workbook(io.BytesIO(broken),read_only=True,data_only=True)
+        self.assertEqual(next(wb.active.iter_rows(values_only=True)),('WMS Order No',))
+        wb.close()
+        parsed=parse_report(broken,'wms.xlsx','intra')
+        self.assertEqual(len(parsed['orders']),2112)
+        self.assertEqual(parsed['rawRows'],2112)
+        self.assertEqual(parsed['orders'][-1]['sns'],{'SN2111'})
+
     def test_2112_orders_one_export_no_second_pass(self):
         data=fixture([[f'OB{i}','Picked','SPX Express','Hà Nội'] for i in range(2112)])
         calls=[]
@@ -94,3 +114,4 @@ class NativeTests(unittest.TestCase):
         self.assertNotIn('QtWebEngine',code);self.assertNotIn('urllib.request',code)
 
 if __name__=='__main__':unittest.main(verbosity=2)
+

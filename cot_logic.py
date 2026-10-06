@@ -65,7 +65,11 @@ def parse_report(data, name, key):
             data = z.read(inner)
     wb = load_workbook(io.BytesIO(data),read_only=True,data_only=True)
     try:
-        rows = wb.worksheets[0].iter_rows(values_only=True)
+        sheet = wb.worksheets[0]
+        # WMS reports can declare dimension=A1 while containing 67 columns
+        # and thousands of rows. Read actual cells instead of trusting bounds.
+        sheet.reset_dimensions()
+        rows = sheet.iter_rows(values_only=True)
         headers = next(rows,None)
         if headers is None: raise ValueError('Report không có tiêu đề.')
         indices = {str(v or '').strip():i for i,v in enumerate(headers)}
@@ -100,3 +104,4 @@ def status_name(code):
 def progress(orders):
     done = sum(o['order_status']==14 for o in orders)
     return done,len(orders),100*done/len(orders) if orders else 0
+

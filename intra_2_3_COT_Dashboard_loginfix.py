@@ -34,7 +34,7 @@ from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.figure import Figure
 
 # ================= CẤU HÌNH PHIÊN BẢN & AUTO-UPDATE =================
-CURRENT_VERSION = "2.4.1_Chrome_Native14"
+CURRENT_VERSION = "2.4.2_Chrome_Native14"
 def _config_file_path():
     if not getattr(sys, "frozen", False):
         return os.path.join(os.path.dirname(os.path.abspath(__file__)), "wms_config.json")
@@ -1641,3 +1641,4 @@ if __name__ == "__main__":
     window = WMSDashboard()
     window.show()
     sys.exit(app.exec())
+
