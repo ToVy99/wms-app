@@ -103,6 +103,26 @@ class NativeTests(unittest.TestCase):
         self.tab.bridge.connected=True;calls=[]
         def request(rid,raw):calls.append(json.loads(raw));self.tab.bridge.completed.emit(rid,json.dumps(dict(success=False,error='HTTP 429')))
         self.tab.bridge.request=request;self.tab.fetch_dataset();self.assertFalse(self.tab.busy);self.assertEqual(len(calls),1);self.assertIn('429',self.tab.message.text());self.assertIn('resp.status===429',FETCH_JS)
+    def test_picked_basket_filter_is_local_and_counts_stay_global(self):
+        rows=[['A','Picked','SPX Express','Hà Nội','SNA','Single','PA','BSK-A',''],
+              ['B','Picked','SPX Express','Hà Nội','SNB','Multi','PB','','BSK-B'],
+              ['C','Picked','SPX Express','Hà Nội','SNC','Single','PC','',''],
+              ['D','Picked','SPX Express','Hà Nội','SND','Single','PD',' - ','null'],
+              ['E','Outbound','SPX Express','Hà Nội','SNE','Single','PE','BSK-E',''],
+              ['A','Picked','SPX Express','Hà Nội','SNA2','Single','PA','','BSK-A2']]
+        self.tab.orders=parse_report(fixture(rows),'baskets.xlsx','intra')['orders']; self.tab.render_all()
+        calls=[]; self.tab.request=lambda m,c:calls.append(m)
+        self.tab.selected={'E'}; self.tab.active_area='OTHER'; self.tab.active_wave='OTHER'
+        self.tab.basket_filter.click()
+        self.assertEqual([o['order_number'] for o in self.tab.visible()],['A','B'])
+        self.assertEqual(self.tab.table.item(0,4).text(),'BSK-A, BSK-A2')
+        self.assertEqual(self.tab.table.rowCount(),2); self.assertEqual(self.tab.basket_filter.text(),'Picked có mã rổ (2)')
+        self.assertEqual(self.tab.selected,set()); self.tab.copy_obvn(); self.assertEqual(self.app.clipboard().text(),'A\nB')
+        self.assertEqual(self.tab.total_card.value.text(),'5'); self.assertEqual(self.tab.outbound_card.value.text(),'1'); self.assertEqual(self.tab.percent_card.value.text(),'20.0%')
+        self.tab.basket_filter.click(); self.assertEqual(self.tab.table.rowCount(),4)
+        self.assertEqual(calls,[])
+        self.tab.scope_changed(); self.assertFalse(self.tab.picked_baskets_only); self.assertEqual(self.tab.basket_filter.text(),'Picked có mã rổ (0)')
+
     def test_disconnected_bridge_and_url_validation(self):
         bridge=NativeBridge({},lambda c:True);results=[];bridge.completed.connect(lambda rid,raw:results.append(json.loads(raw)))
         bridge.request('1',json.dumps(dict(type='WMS_GET',url=URL_EXPORT_LIST)));self.assertFalse(results[-1]['success']);self.assertIsNone(bridge.worker)
@@ -114,4 +134,5 @@ class NativeTests(unittest.TestCase):
         self.assertNotIn('QtWebEngine',code);self.assertNotIn('urllib.request',code)
 
 if __name__=='__main__':unittest.main(verbosity=2)
+
 

@@ -1,6 +1,6 @@
-INTRACITY 2.4.2 — APP GỌN, LOGIC COT WEB 1.4
+INTRACITY 2.4.3 — APP GỌN, LOGIC COT WEB 1.4
 
-Chạy IntraCity_2.4.2.exe trên Windows 10/11 64-bit có Google Chrome.
+Chạy IntraCity_2.4.3.exe trên Windows 10/11 64-bit có Google Chrome.
 Không cần cài Python. Đăng nhập WMS → đăng nhập và chọn kho trong Chrome → trở lại app chọn nhóm, ngày và nút COT → Tải dữ liệu.
 Chrome giữ mở để đổi kho. Khi đổi kho, bấm Tải dữ liệu để thay bộ đơn.
 
@@ -31,8 +31,15 @@ SPX CK: SPX - Hàng Cồng Kềnh, không giới hạn tỉnh.
 
 BUILD
 Python 3.12 64-bit trên Windows → chạy build_windows.ps1.
-10 kiểm thử logic/UI trước khi build; kiểm tra EXE thật với Chrome và API giả lập sau build, không gọi WMS thật trong kiểm thử.
+11 kiểm thử logic/UI trước khi build; kiểm tra EXE thật với Chrome và API giả lập sau build, không gọi WMS thật trong kiểm thử.
 Đăng nhập/kho WMS thực tế cần kiểm tra bằng tài khoản của người dùng.
 
 
-SỬA 2.4.2: Đọc toàn bộ dữ liệu thật trong XLSX khi WMS ghi sai vùng dữ liệu A1. Không thay luồng API, không tải lại report.
+SỬA 2.4.3: Đọc toàn bộ dữ liệu thật trong XLSX khi WMS ghi sai vùng dữ liệu A1. Không thay luồng API, không tải lại report.
+
+
+GIAO DIỆN 2.4.3
+- Trạng thái nằm ở khung bên phải, số đơn lớn.
+- Tổng đơn, số Outbound và % Outbound là ba thẻ nổi bật.
+- Nút Picked có mã rổ lọc toàn bộ đơn Picked có Device ID/Basket ID hợp lệ trong report đang tải; bấm lại hiện tất cả Picked. Không gọi API thêm.
+- Bảng có cột Mã rổ / BSK để xem trực tiếp. Khi bấm bộ lọc mã rổ, bỏ các đơn đã chọn trước đó để Copy đúng các đơn đang lọc.

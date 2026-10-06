@@ -11,7 +11,7 @@ from pathlib import Path
 from urllib.parse import urlsplit
 
 from PySide6.QtCore import QObject, QThread, Signal, Slot, QTimer, QDate, Qt
-from PySide6.QtWidgets import (QApplication, QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QLabel, QComboBox, QDateEdit, QTableWidget, QTableWidgetItem, QAbstractItemView, QHeaderView, QDialog, QDialogButtonBox, QTimeEdit, QLineEdit, QTextEdit, QMessageBox, QGridLayout)
+from PySide6.QtWidgets import (QApplication, QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QLabel, QComboBox, QDateEdit, QTableWidget, QTableWidgetItem, QAbstractItemView, QHeaderView, QDialog, QDialogButtonBox, QTimeEdit, QLineEdit, QTextEdit, QMessageBox, QGridLayout, QFrame)
 from playwright.sync_api import sync_playwright
 from cot_logic import DEFAULT_CONFIG, time_range, export_body, choose_job, parse_report, status_name, progress, URL_EXPORT_LIST, URL_EXPORT, URL_ORDER
 import base64
@@ -216,6 +216,31 @@ class ReportParser(QThread):
         except Exception as exc: self.failed.emit(str(exc))
 
 
+
+class MetricCard(QFrame):
+    def __init__(self, title, color, parent=None):
+        super().__init__(parent)
+        self.setStyleSheet('QFrame {background:#252638; border:1px solid #43465f; border-radius:10px;} QLabel {border:0; background:transparent;}')
+        layout=QVBoxLayout(self); layout.setContentsMargins(14,10,14,10); layout.setSpacing(2)
+        caption=QLabel(title); caption.setStyleSheet('color:#c4c9df; font-size:12px; font-weight:600;')
+        self.value=QLabel('0'); self.value.setStyleSheet(f'color:{color}; font-size:32px; font-weight:800;')
+        layout.addWidget(caption); layout.addWidget(self.value)
+
+class StatusButton(QPushButton):
+    def __init__(self, label, count, parent=None):
+        super().__init__(parent)
+        self.setCheckable(True); self.setMinimumHeight(60); self.setMinimumWidth(112)
+        self.setAccessibleName(f'{label} ({count})')
+        self.setStyleSheet('QPushButton {background:#292b3f; border:1px solid #484b65; border-radius:8px;} QPushButton:hover {background:#363951;} QPushButton:checked {background:#3b3528; border:2px solid #ff9d37;} QPushButton:disabled {background:#232436;}')
+        box=QVBoxLayout(self); box.setContentsMargins(8,5,8,5); box.setSpacing(0)
+        number=QLabel(f'{count:,}'.replace(',','.')); number.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        number.setStyleSheet('background:transparent; border:0; color:#ffffff; font-size:22px; font-weight:800;')
+        title=QLabel(label); title.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        title.setStyleSheet('background:transparent; border:0; color:#cbd0e5; font-size:11px;')
+        for widget in (number,title):
+            widget.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents); box.addWidget(widget)
+
+
 class ChromeCotTab(QWidget):
     def __init__(self, config, save_config, parent=None):
         super().__init__(parent)
@@ -223,12 +248,15 @@ class ChromeCotTab(QWidget):
         saved = config.get('cot_web_v14',{}).get('intracityConfigV11')
         self.config = copy.deepcopy(saved or DEFAULT_CONFIG)
         self.orders=[]; self.selected=set(); self.area_loaded=set()
-        self.active_status=None; self.active_area=None; self.active_wave=None
+        self.active_status=None; self.active_area=None; self.active_wave=None; self.picked_baskets_only=False
         self.pending={}; self.counter=0; self.busy=False; self.parser=None
         self.bridge.completed.connect(self.completed)
         self.bridge.sessionChanged.connect(lambda _,text: self.message.setText(text))
         layout=QVBoxLayout(self); layout.setContentsMargins(8,8,8,8); layout.setSpacing(6)
-        top=QHBoxLayout(); layout.addLayout(top)
+        header=QHBoxLayout(); header.setSpacing(16); layout.addLayout(header)
+        self.controls_panel=QWidget(); left=QVBoxLayout(self.controls_panel); left.setContentsMargins(0,0,0,0); left.setSpacing(6)
+        header.addWidget(self.controls_panel,3)
+        top=QHBoxLayout(); left.addLayout(top)
         self.carrier=QComboBox()
         for k,c in self.config.items(): self.carrier.addItem(c['name'],k)
         self.date=QDateEdit(QDate.currentDate()); self.date.setCalendarPopup(True); self.date.setDisplayFormat('dd/MM/yyyy')
@@ -236,23 +264,39 @@ class ChromeCotTab(QWidget):
         self.settings=QPushButton('Khung giờ'); self.settings.clicked.connect(self.open_settings)
         for w in (QLabel('Nhóm'),self.carrier,QLabel('Ngày'),self.date,self.load,self.settings): top.addWidget(w)
         top.addStretch()
-        self.cot_row=QHBoxLayout(); layout.addLayout(self.cot_row); self.cot_buttons=[]; self.cot_id=None
-        self.range_label=QLabel(); layout.addWidget(self.range_label)
-        self.summary=QLabel('Tổng 0 đơn · Outbound 0 / 0 · 0.0%'); layout.addWidget(self.summary)
-        self.status_row=QGridLayout(); layout.addLayout(self.status_row)
+        self.cot_row=QGridLayout(); left.addLayout(self.cot_row); self.cot_buttons=[]; self.cot_id=None
+        self.range_label=QLabel(); self.range_label.setWordWrap(True); left.addWidget(self.range_label)
+        metrics=QHBoxLayout(); metrics.setSpacing(8); left.addLayout(metrics)
+        self.total_card=MetricCard('TỔNG ĐƠN','#ffffff')
+        self.outbound_card=MetricCard('ĐƠN OUTBOUND','#69e6b2')
+        self.percent_card=MetricCard('TỶ LỆ OUTBOUND','#69e6b2')
+        self.percent_card.value.setStyleSheet('background:transparent; border:0; color:#69e6b2; font-size:38px; font-weight:800;')
+        for card in (self.total_card,self.outbound_card,self.percent_card): metrics.addWidget(card,1)
+        self.summary=QLabel(); self.summary.setStyleSheet('color:#c4c9df;'); left.addWidget(self.summary)
+        left.addStretch()
+        self.status_panel=QFrame(); self.status_panel.setMinimumWidth(390)
+        self.status_panel.setStyleSheet('QFrame {background:#202132; border:1px solid #393c52; border-radius:10px;}')
+        right=QVBoxLayout(self.status_panel); right.setContentsMargins(10,8,10,8); right.setSpacing(6)
+        title=QLabel('TRẠNG THÁI · BẤM ĐỂ XEM ĐƠN'); title.setStyleSheet('border:0; color:#c4c9df; font-size:11px; font-weight:700;'); right.addWidget(title)
+        self.status_row=QGridLayout(); self.status_row.setSpacing(6); right.addLayout(self.status_row); right.addStretch()
+        header.addWidget(self.status_panel,2)
         filters=QHBoxLayout(); layout.addLayout(filters)
         self.area=QComboBox(); self.wave=QComboBox()
-        filters.addWidget(QLabel('Area')); filters.addWidget(self.area); filters.addWidget(QLabel('Wave Type')); filters.addWidget(self.wave); filters.addStretch()
+        self.area.setMinimumWidth(165); self.wave.setMinimumWidth(205)
+        filters.addWidget(QLabel('Area')); filters.addWidget(self.area); filters.addWidget(QLabel('Wave Type')); filters.addWidget(self.wave)
+        self.basket_filter=QPushButton('Picked có mã rổ (0)'); self.basket_filter.setCheckable(True)
+        self.basket_filter.setStyleSheet('QPushButton {font-weight:700;} QPushButton:checked {background:#24483d; border:2px solid #69e6b2; color:#94f7d0;}')
+        self.basket_filter.clicked.connect(self.toggle_picked_baskets); filters.addWidget(self.basket_filter); filters.addStretch()
         self.area.currentIndexChanged.connect(self.filter_changed); self.wave.currentIndexChanged.connect(self.filter_changed)
         actions=QHBoxLayout(); layout.addLayout(actions)
         for label,fn in [('Chọn các đơn đang hiện',self.select_visible),('Bỏ chọn',self.clear_selection),('Copy OBVN',self.copy_obvn),('Picking ID / BSK',self.show_tasks)]:
             b=QPushButton(label); b.clicked.connect(fn); actions.addWidget(b)
         self.visible_label=QLabel(); actions.addWidget(self.visible_label); actions.addStretch()
-        self.table=QTableWidget(0,7); self.table.setHorizontalHeaderLabels(['Chọn','OBVN','Order SN','Trạng thái','Area','Create Time','Cut off Time'])
+        self.table=QTableWidget(0,8); self.table.setHorizontalHeaderLabels(['Chọn','OBVN','Order SN','Trạng thái','Mã rổ / BSK','Area','Create Time','Cut off Time'])
         self.table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers); self.table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         self.table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Interactive)
         self.table.horizontalHeader().setStretchLastSection(True); self.table.setColumnWidth(0,45)
-        for col,width in [(1,180),(2,190),(3,120),(4,80),(5,160)]: self.table.setColumnWidth(col,width)
+        for col,width in [(1,180),(2,190),(3,120),(4,170),(5,80),(6,160)]: self.table.setColumnWidth(col,width)
         self.table.itemChanged.connect(self.check_changed); layout.addWidget(self.table,1)
         self.message=QLabel('Chọn COT và bấm Tải dữ liệu. Chưa gọi WMS.'); self.message.setWordWrap(True); layout.addWidget(self.message)
         self.carrier.currentIndexChanged.connect(self.fill_cots)
@@ -263,18 +307,20 @@ class ChromeCotTab(QWidget):
     def empty_row(row):
         while row.count():
             item=row.takeAt(0)
-            if item.widget(): item.widget().deleteLater()
+            if item.widget():
+                item.widget().hide()
+                item.widget().deleteLater()
 
     def fill_cots(self):
         self.empty_row(self.cot_row); self.cot_buttons=[]
         carrier=self.config[self.carrier.currentData()]
         self.cot_id=carrier['cots'][0]['id']
-        for cot in carrier['cots']:
+        for ix,cot in enumerate(carrier['cots']):
             suffix=' hôm trước → hôm nay' if carrier.get('previous') else (' (+1)' if cot['end']<=cot['start'] else '')
             b=QPushButton(f"{cot['name']} · {cot['start']}–{cot['end']}{suffix}"); b.setCheckable(True)
             b.clicked.connect(lambda _,cid=cot['id']: self.select_cot(cid))
-            self.cot_row.addWidget(b); self.cot_buttons.append((cot['id'],b))
-        self.cot_row.addStretch(); self.scope_changed()
+            self.cot_row.addWidget(b,ix//2,ix%2); self.cot_buttons.append((cot['id'],b))
+        self.scope_changed()
 
     def select_cot(self,cid):
         if self.busy: return
@@ -289,12 +335,12 @@ class ChromeCotTab(QWidget):
         for cid,b in self.cot_buttons: b.setChecked(cid==self.cot_id)
         _,c,beg,end=self.current_range()
         self.range_label.setText(f"{c['name']} · Create Time · {beg:%d/%m/%Y %H:%M} → {end:%d/%m/%Y %H:%M}")
-        self.orders=[]; self.selected.clear(); self.area_loaded.clear(); self.active_status=None; self.active_area=self.active_wave=None
+        self.orders=[]; self.selected.clear(); self.area_loaded.clear(); self.active_status=None; self.active_area=self.active_wave=None; self.picked_baskets_only=False
         self.render_all(); self.message.setText('Chọn COT và bấm Tải dữ liệu. Chưa gọi WMS.')
 
     def set_busy(self,busy):
         self.busy=busy
-        for w in [self.load,self.carrier,self.date,self.settings,*[b for _,b in self.cot_buttons]]: w.setEnabled(not busy)
+        for w in [self.load,self.carrier,self.date,self.settings,self.basket_filter,*[b for _,b in self.cot_buttons]]: w.setEnabled(not busy)
         for i in range(self.status_row.count()):
             w=self.status_row.itemAt(i).widget()
             if w: w.setEnabled(not busy)
@@ -358,18 +404,24 @@ class ChromeCotTab(QWidget):
         self.message.setText(f"✓ {self.report_name} · {data['rawRows']} dòng · lọc {data['filteredRows']} dòng · {len(self.orders)} đơn hợp lệ (đã loại Cancel)")
 
     def status_orders(self):
-        return [o for o in self.orders if self.active_status is None or str(o['order_status'])==str(self.active_status)]
+        return [o for o in self.orders if (self.active_status is None or str(o['order_status'])==str(self.active_status)) and (not self.picked_baskets_only or (str(o['order_status'])=='3' and self.basket_codes(o)))]
 
     def visible(self):
         return [o for o in self.status_orders() if (self.active_area is None or (o['area'] or '-')==self.active_area) and (self.active_wave is None or (o['wave_type'] or '-')==self.active_wave)]
 
     def render_all(self):
-        done,total,pct=progress(self.orders); self.summary.setText(f'Tổng {total} đơn · Outbound {done} / {total} · {pct:.1f}%')
+        done,total,pct=progress(self.orders)
+        self.total_card.value.setText(f'{total:,}'.replace(',','.'))
+        self.outbound_card.value.setText(f'{done:,}'.replace(',','.'))
+        self.percent_card.value.setText(f'{pct:.1f}%')
+        self.summary.setText(f'Outbound {done} / {total} đơn hợp lệ · đã loại Cancel')
+        baskets=sum(str(o['order_status'])=='3' and bool(self.basket_codes(o)) for o in self.orders)
+        self.basket_filter.setText(f'Picked có mã rổ ({baskets})'); self.basket_filter.setChecked(self.picked_baskets_only)
         self.empty_row(self.status_row)
         counts=Counter(o['order_status'] for o in self.orders)
         for ix,(code,label,count) in enumerate([(None,'Tổng',total)]+[(s,status_name(s),n) for s,n in counts.most_common()]):
-            b=QPushButton(f'{label} ({count})'); b.setCheckable(True); b.setChecked(self.active_status==code); b.setEnabled(not self.busy)
-            b.clicked.connect(lambda _,s=code: self.select_status(s)); self.status_row.addWidget(b,ix//8,ix%8)
+            b=StatusButton(label,count); b.setChecked(self.active_status==code); b.setEnabled(not self.busy)
+            b.clicked.connect(lambda _,s=code: self.select_status(s)); self.status_row.addWidget(b,ix//3,ix%3)
         src=self.status_orders()
         for combo,field,active in [(self.area,'area',self.active_area),(self.wave,'wave_type',self.active_wave)]:
             combo.blockSignals(True); combo.clear(); combo.addItem(f'Tất cả ({len(src)})',None)
@@ -381,7 +433,7 @@ class ChromeCotTab(QWidget):
 
     def select_status(self,code):
         if self.busy: return
-        self.active_status=code; self.active_area=self.active_wave=None; self.render_all()
+        self.active_status=code; self.active_area=self.active_wave=None; self.picked_baskets_only=False; self.render_all()
         if code is not None and str(code) not in self.area_loaded and any(o['area']=='-' for o in self.status_orders()):
             self.set_busy(True); self.area_map={}; self.area_page=1; self.area_code=code
             _,c,beg,end=self.current_range()
@@ -405,6 +457,18 @@ class ChromeCotTab(QWidget):
         self.area_loaded.add(str(self.area_code)); self.set_busy(False); self.render_all()
         self.message.setText('Đã nạp Area · '+status_name(self.area_code)+(f' · {self.area_total} đơn, WMS chỉ cho đọc Area tối đa 2000' if self.area_total>2000 else ''))
 
+    @staticmethod
+    def basket_codes(order):
+        # WMS uses Device ID and Basket ID for the BSK list in the report.
+        return sorted({str(v).strip() for v in order.get('bsks',()) if str(v).strip().lower() not in ('','-','null','none','nan','n/a','0')})
+
+    def toggle_picked_baskets(self,checked):
+        if self.busy: return
+        self.picked_baskets_only=bool(checked); self.active_status=3
+        self.active_area=self.active_wave=None; self.selected.clear()
+        self.render_all()
+        self.message.setText(('Đang lọc Picked có mã rổ' if checked else 'Đang hiện tất cả đơn Picked')+f' · {len(self.visible())} đơn · từ dữ liệu đã tải')
+
     def filter_changed(self,*_):
         self.active_area=self.area.currentData(); self.active_wave=self.wave.currentData(); self.render_table()
 
@@ -414,7 +478,7 @@ class ChromeCotTab(QWidget):
         for i,o in enumerate(rows):
             cb=QTableWidgetItem(); cb.setFlags(Qt.ItemFlag.ItemIsEnabled|Qt.ItemFlag.ItemIsUserCheckable)
             cb.setData(Qt.ItemDataRole.UserRole,o['order_number']); cb.setCheckState(Qt.CheckState.Checked if o['order_number'] in self.selected else Qt.CheckState.Unchecked); self.table.setItem(i,0,cb)
-            for j,value in enumerate([o['order_number'],', '.join(sorted(o['sns'])),status_name(o['order_status']),o['area'],o['ctime_text'],o['cutoff_text']],1): self.table.setItem(i,j,QTableWidgetItem(str(value)))
+            for j,value in enumerate([o['order_number'],', '.join(sorted(o['sns'])),status_name(o['order_status']),', '.join(self.basket_codes(o)),o['area'],o['ctime_text'],o['cutoff_text']],1): self.table.setItem(i,j,QTableWidgetItem(str(value)))
         self.table.setUpdatesEnabled(True); self.table.blockSignals(False)
         self.visible_label.setText(f'Hiện {len(rows)} · Chọn {len(self.selected)}')
 
@@ -474,3 +538,4 @@ class ChromeCotTab(QWidget):
         if not self.bridge.save_config(self.bridge.config):
             self.bridge.config['cot_web_v14']=old; QMessageBox.warning(self,'COT','Không lưu được cài đặt.');return
         self.config=updated; self.fill_cots()
+
