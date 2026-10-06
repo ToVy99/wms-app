@@ -331,6 +331,7 @@ class ChromeCotTab(QWidget):
         for ix,cot in enumerate(carrier['cots']):
             suffix=' hôm trước → hôm nay' if carrier.get('previous') else (' (+1)' if cot['end']<=cot['start'] else '')
             b=QPushButton(f"{cot['name']} · {cot['start']}–{cot['end']}{suffix}"); b.setCheckable(True)
+            b.setStyleSheet('QPushButton:checked {background:#3b3528; border:2px solid #ff9d37; color:#ffffff; font-weight:700;} QPushButton:checked:hover {background:#49402c;}')
             b.clicked.connect(lambda _,cid=cot['id']: self.select_cot(cid))
             self.cot_row.addWidget(b,ix//2,ix%2); self.cot_buttons.append((cot['id'],b))
         self.scope_changed()
