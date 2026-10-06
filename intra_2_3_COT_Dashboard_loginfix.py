@@ -34,7 +34,7 @@ from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.figure import Figure
 
 # ================= CẤU HÌNH PHIÊN BẢN & AUTO-UPDATE =================
-CURRENT_VERSION = "2.4.3_Chrome_Native14"
+CURRENT_VERSION = "2.4.4_Chrome_Native14"
 def _config_file_path():
     if not getattr(sys, "frozen", False):
         return os.path.join(os.path.dirname(os.path.abspath(__file__)), "wms_config.json")
@@ -726,7 +726,7 @@ class WMSDashboard(QWidget):
 
         self.config = load_config()
 
-        self.setWindowTitle(f"IntraCity v{CURRENT_VERSION}")
+        self.setWindowTitle("IntraCity v2.4")
         self.resize(1680, 950)
         self.setStyleSheet(MODERN_STYLE)
 
@@ -1641,5 +1641,6 @@ if __name__ == "__main__":
     window = WMSDashboard()
     window.show()
     sys.exit(app.exec())
+
 
 

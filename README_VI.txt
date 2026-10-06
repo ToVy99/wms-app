@@ -1,6 +1,6 @@
 INTRACITY 2.4.3 — APP GỌN, LOGIC COT WEB 1.4
 
-Chạy IntraCity_2.4.3.exe trên Windows 10/11 64-bit có Google Chrome.
+Chạy IntraCity v2.4.exe trên Windows 10/11 64-bit có Google Chrome.
 Không cần cài Python. Đăng nhập WMS → đăng nhập và chọn kho trong Chrome → trở lại app chọn nhóm, ngày và nút COT → Tải dữ liệu.
 Chrome giữ mở để đổi kho. Khi đổi kho, bấm Tải dữ liệu để thay bộ đơn.
 
@@ -43,3 +43,6 @@ GIAO DIỆN 2.4.3
 - Tổng đơn, số Outbound và % Outbound là ba thẻ nổi bật.
 - Nút Picked có mã rổ lọc toàn bộ đơn Picked có Device ID/Basket ID hợp lệ trong report đang tải; bấm lại hiện tất cả Picked. Không gọi API thêm.
 - Bảng có cột Mã rổ / BSK để xem trực tiếp. Khi bấm bộ lọc mã rổ, bỏ các đơn đã chọn trước đó để Copy đúng các đơn đang lọc.
+
+
+CẬP NHẬT: Khung trạng thái cố định 300px, 16 ô giữ nguyên vị trí kể cả khi bằng 0; chỉ cập nhật số lượng khi tải xong. Tên EXE và cửa sổ: IntraCity v2.4.

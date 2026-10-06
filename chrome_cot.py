@@ -230,15 +230,20 @@ class StatusButton(QPushButton):
     def __init__(self, label, count, parent=None):
         super().__init__(parent)
         self.setCheckable(True); self.setMinimumHeight(60); self.setMinimumWidth(112)
+        self.label=label
         self.setAccessibleName(f'{label} ({count})')
         self.setStyleSheet('QPushButton {background:#292b3f; border:1px solid #484b65; border-radius:8px;} QPushButton:hover {background:#363951;} QPushButton:checked {background:#3b3528; border:2px solid #ff9d37;} QPushButton:disabled {background:#232436;}')
         box=QVBoxLayout(self); box.setContentsMargins(8,5,8,5); box.setSpacing(0)
-        number=QLabel(f'{count:,}'.replace(',','.')); number.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.number=number=QLabel(f'{count:,}'.replace(',','.')); number.setAlignment(Qt.AlignmentFlag.AlignCenter)
         number.setStyleSheet('background:transparent; border:0; color:#ffffff; font-size:22px; font-weight:800;')
         title=QLabel(label); title.setAlignment(Qt.AlignmentFlag.AlignCenter)
         title.setStyleSheet('background:transparent; border:0; color:#cbd0e5; font-size:11px;')
         for widget in (number,title):
             widget.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents); box.addWidget(widget)
+
+    def set_count(self,count):
+        self.number.setText(f'{count:,}'.replace(',','.'))
+        self.setAccessibleName(f'{self.label} ({count})')
 
 
 class ChromeCotTab(QWidget):
@@ -274,11 +279,19 @@ class ChromeCotTab(QWidget):
         for card in (self.total_card,self.outbound_card,self.percent_card): metrics.addWidget(card,1)
         self.summary=QLabel(); self.summary.setStyleSheet('color:#c4c9df;'); left.addWidget(self.summary)
         left.addStretch()
-        self.status_panel=QFrame(); self.status_panel.setMinimumWidth(390)
+        self.status_panel=QFrame(); self.status_panel.setMinimumWidth(486); self.status_panel.setFixedHeight(300)
         self.status_panel.setStyleSheet('QFrame {background:#202132; border:1px solid #393c52; border-radius:10px;}')
         right=QVBoxLayout(self.status_panel); right.setContentsMargins(10,8,10,8); right.setSpacing(6)
         title=QLabel('TRẠNG THÁI · BẤM ĐỂ XEM ĐƠN'); title.setStyleSheet('border:0; color:#c4c9df; font-size:11px; font-weight:700;'); right.addWidget(title)
         self.status_row=QGridLayout(); self.status_row.setSpacing(6); right.addLayout(self.status_row); right.addStretch()
+        self.status_buttons={}
+        # Keep every status in a stable slot, including zero counts.
+        for ix,code in enumerate([None,3,14,0,1,2,5,6,4,7,8,9,10,11,12,13]):
+            button=StatusButton('Tổng' if code is None else status_name(code),0)
+            button.setFixedHeight(60)
+            button.clicked.connect(lambda _,s=code: self.select_status(s))
+            self.status_buttons[code]=button
+            self.status_row.addWidget(button,ix//4,ix%4)
         header.addWidget(self.status_panel,2)
         filters=QHBoxLayout(); layout.addLayout(filters)
         self.area=QComboBox(); self.wave=QComboBox()
@@ -417,11 +430,11 @@ class ChromeCotTab(QWidget):
         self.summary.setText(f'Outbound {done} / {total} đơn hợp lệ · đã loại Cancel')
         baskets=sum(str(o['order_status'])=='3' and bool(self.basket_codes(o)) for o in self.orders)
         self.basket_filter.setText(f'Picked có mã rổ ({baskets})'); self.basket_filter.setChecked(self.picked_baskets_only)
-        self.empty_row(self.status_row)
-        counts=Counter(o['order_status'] for o in self.orders)
-        for ix,(code,label,count) in enumerate([(None,'Tổng',total)]+[(s,status_name(s),n) for s,n in counts.most_common()]):
-            b=StatusButton(label,count); b.setChecked(self.active_status==code); b.setEnabled(not self.busy)
-            b.clicked.connect(lambda _,s=code: self.select_status(s)); self.status_row.addWidget(b,ix//3,ix%3)
+        counts=Counter(str(o['order_status']) for o in self.orders)
+        for code,button in self.status_buttons.items():
+            button.set_count(total if code is None else counts[str(code)])
+            button.setChecked(self.active_status==code)
+            button.setEnabled(not self.busy)
         src=self.status_orders()
         for combo,field,active in [(self.area,'area',self.active_area),(self.wave,'wave_type',self.active_wave)]:
             combo.blockSignals(True); combo.clear(); combo.addItem(f'Tất cả ({len(src)})',None)
@@ -538,4 +551,5 @@ class ChromeCotTab(QWidget):
         if not self.bridge.save_config(self.bridge.config):
             self.bridge.config['cot_web_v14']=old; QMessageBox.warning(self,'COT','Không lưu được cài đặt.');return
         self.config=updated; self.fill_cots()
+
 

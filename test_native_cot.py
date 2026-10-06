@@ -123,6 +123,23 @@ class NativeTests(unittest.TestCase):
         self.assertEqual(calls,[])
         self.tab.scope_changed(); self.assertFalse(self.tab.picked_baskets_only); self.assertEqual(self.tab.basket_filter.text(),'Picked có mã rổ (0)')
 
+    def test_status_panel_keeps_slots_and_height_across_data_changes(self):
+        self.tab.resize(1500,800); self.tab.show(); self.app.processEvents()
+        buttons=dict(self.tab.status_buttons)
+        slots={code:self.tab.status_row.getItemPosition(self.tab.status_row.indexOf(button)) for code,button in buttons.items()}
+        height=self.tab.status_panel.height()
+        for statuses in [[3]*7+[14]*20, [0]*30+[14], []]:
+            self.tab.orders=[dict(order_status=status,bsks=set(),area='-',wave_type='-',order_number=str(i),sns=set(),ctime_text='',cutoff_text='') for i,status in enumerate(statuses)]
+            self.tab.render_all(); self.app.processEvents()
+            self.assertEqual(self.tab.status_panel.height(),height)
+            self.assertEqual(self.tab.status_row.count(),16)
+            for code,button in buttons.items():
+                self.assertIs(self.tab.status_buttons[code],button)
+                self.assertEqual(self.tab.status_row.getItemPosition(self.tab.status_row.indexOf(button)),slots[code])
+                self.assertTrue(self.tab.status_panel.rect().contains(button.geometry()))
+            self.assertEqual(buttons[3].number.text(),str(statuses.count(3)))
+            self.assertEqual(buttons[14].number.text(),str(statuses.count(14)))
+
     def test_disconnected_bridge_and_url_validation(self):
         bridge=NativeBridge({},lambda c:True);results=[];bridge.completed.connect(lambda rid,raw:results.append(json.loads(raw)))
         bridge.request('1',json.dumps(dict(type='WMS_GET',url=URL_EXPORT_LIST)));self.assertFalse(results[-1]['success']);self.assertIsNone(bridge.worker)
@@ -134,5 +151,6 @@ class NativeTests(unittest.TestCase):
         self.assertNotIn('QtWebEngine',code);self.assertNotIn('urllib.request',code)
 
 if __name__=='__main__':unittest.main(verbosity=2)
+
 
 
