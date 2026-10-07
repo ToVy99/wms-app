@@ -1,0 +1,43 @@
+name: Build IntraCity Windows EXE
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - '*.py'
+      - 'requirements-build.txt'
+      - 'build_windows.ps1'
+      - '.github/workflows/build-windows.yml'
+permissions:
+  contents: read
+concurrency:
+  group: wms-windows-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  build:
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          architecture: 'x64'
+      - name: Build Windows executable
+        shell: pwsh
+        run: ./build_windows.ps1
+      - name: Upload EXE
+        uses: actions/upload-artifact@v4
+        with:
+          name: IntraCity_Windows_x64
+          path: dist/*.exe
+          if-no-files-found: error
+          retention-days: 14
+      - name: Upload startup verification
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: IntraCity_Startup_Verification
+          path: |
+            smoke-test-result.json
+            smoke-gui.png
+          if-no-files-found: ignore
