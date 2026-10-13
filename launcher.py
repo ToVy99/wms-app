@@ -2,8 +2,19 @@
 import json
 import sys
 import time
+from pathlib import Path
+from PySide6.QtGui import QIcon
 import intra_2_3_COT_Dashboard_loginfix as intra
 from chrome_cot import FETCH_JS
+
+
+def apply_app_icon(app, window):
+    # __file__ points inside the bundle when built with PyInstaller.
+    icon = QIcon(str(Path(__file__).resolve().with_name('app.ico')))
+    if icon.isNull():
+        raise RuntimeError('Khong doc duoc app.ico trong thu muc ung dung.')
+    app.setWindowIcon(icon)
+    window.setWindowIcon(icon)
 
 
 def main():
@@ -13,6 +24,7 @@ def main():
         intra.WMSDashboard.start_folder_watcher = lambda self, path=None: None
     app = intra.QApplication(sys.argv)
     window = intra.WMSDashboard()
+    apply_app_icon(app, window)
     window.show()
     if smoke:
         started = time.monotonic()
@@ -32,6 +44,8 @@ def main():
                     finish({'passed':False,'error':'Native COT failed to initialize'})
                 return
             try:
+                assert not app.windowIcon().isNull()
+                assert not window.windowIcon().isNull()
                 assert window.mainTabs.count()==2
                 assert window.cotTab.bridge.worker is None
                 assert not hasattr(intra,'COTOrderListThread')
@@ -78,3 +92,4 @@ def main():
 
 if __name__=='__main__':
     sys.exit(main())
+

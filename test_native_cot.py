@@ -39,6 +39,53 @@ class NativeTests(unittest.TestCase):
         calls=[];self.tab.request=lambda m,c:calls.append(m)
         self.tab.carrier.setCurrentIndex(1);self.tab.date.setDate(QDate(2026,12,31));self.tab.select_cot('2')
         self.assertEqual(calls,[]);self.assertIsNone(self.tab.bridge.worker);self.assertEqual(self.tab.carrier.count(),4)
+
+    def test_grouped_area_counts_filter_and_missing_are_local(self):
+        self.tab.orders=parse_report(fixture([[f'OB{i}','Picked','SPX Express','Hà Nội',f'SN{i}','Single',f'P{i}'] for i in range(7)]),'x.xlsx','intra')['orders']
+        for o,area in zip(self.tab.orders,['A1','A2','D1','LC1','CF','A1,A2,LC2','-']):o['area']=area
+        self.tab.active_status=3;self.tab.render_all()
+        self.assertIn('A: 3',self.tab.area_summary.text());self.assertIn('LC: 2',self.tab.area_summary.text());self.assertIn('CF: 1',self.tab.area_summary.text())
+        self.assertIn('Chưa có Area: 1',self.tab.area_summary.text())
+        calls=[];self.tab.request=lambda m,c:calls.append(m)
+        self.tab.area.setCurrentIndex(self.tab.area.findData('A'));self.assertEqual(self.tab.table.rowCount(),3)
+        self.tab.area.setCurrentIndex(self.tab.area.findData('LC'));self.assertEqual(self.tab.table.rowCount(),2)
+        self.tab.area.setCurrentIndex(self.tab.area.findData('-'));self.assertEqual(self.tab.table.rowCount(),1)
+        self.assertEqual(self.tab.total_card.value.text(),'7');self.assertEqual(calls,[])
+
+    def test_sku_names_aggregate_without_duplicating_orders(self):
+        wb=Workbook();ws=wb.active;ws.append(['WMS Order No','Status','New 3PL','Buyer State','SKU Name'])
+        ws.append(['OB1','Picked','SPX Express','Hà Nội','Áo xanh']);ws.append(['OB1','Picked','SPX Express','Hà Nội','Quần đen']);ws.append(['OB1','Picked','SPX Express','Hà Nội','Áo xanh'])
+        out=io.BytesIO();wb.save(out)
+        self.tab.orders=parse_report(out.getvalue(),'x.xlsx','intra')['orders'];self.tab.render_all()
+        self.assertEqual(len(self.tab.orders),1);self.assertEqual(self.tab.orders[0]['sku_names'],{'Áo xanh','Quần đen'})
+        self.assertIn('Áo xanh',self.tab.table.item(0,6).text());self.assertIn('Quần đen',self.tab.table.item(0,6).text())
+        self.tab.search.setText('quan den');self.assertEqual(self.tab.table.rowCount(),1)
+
+    def test_search_all_report_fields_is_local_and_keeps_totals(self):
+        raw=fixture([
+            ['OB1','Picked','SPX Express','Hà Nội','SN1','Single','PICK-A','DEVICE-1','BASKET-1'],
+            ['OB1','Picked','SPX Express','Hà Nội','SN-EXTRA','Single','PICK-EXTRA','DEVICE-EXTRA','BASKET-EXTRA'],
+            ['OB2','Outbound','SPX Express','Hà Nội','SN2','Multi','PICK-B','DEVICE-2','BASKET-2'],
+        ])
+        self.tab.orders=parse_report(raw,'search.xlsx','intra')['orders']
+        self.tab.orders[0]['area']='Khu Đóng Gói'
+        self.tab.render_all()
+        calls=[];self.tab.request=lambda m,c:calls.append(m)
+        for term in ['ob1','sn-extra','pick-extra','basket-extra','device-extra','ha noi','khu dong goi','picked pick-a']:
+            self.tab.search.setText(term)
+            self.assertIn('OB1',[o['order_number'] for o in self.tab.visible()])
+        self.tab.select_visible();self.assertTrue(self.tab.selected)
+        self.tab.search.setText('pick-b');self.assertFalse(self.tab.selected)
+        self.assertEqual([o['order_number'] for o in self.tab.visible()],['OB2'])
+        self.tab.copy_obvn();self.assertEqual(self.app.clipboard().text(),'OB2')
+        self.assertEqual(self.tab.total_card.value.text(),'2')
+        self.assertEqual(self.tab.percent_card.value.text(),'50.0%')
+        self.tab.search.setText('khong-ton-tai');self.assertEqual(self.tab.table.rowCount(),0)
+        self.tab.search.clear();self.assertEqual(self.tab.table.rowCount(),2)
+        self.tab.toggle_picked_baskets(True);self.tab.search.setText('pick-b');self.assertEqual(self.tab.table.rowCount(),0)
+        self.tab.search.setText('pick-a');self.assertEqual(self.tab.table.rowCount(),1)
+        self.tab.select_cot('2');self.assertEqual(self.tab.search.text(),'')
+        self.assertEqual(calls,[])
     def test_exact_windows_and_year_rollover(self):
         expected={'intra':[('20:00','23:00'),('23:00','02:00'),('02:00','16:00'),('16:00','20:00')],'aha':[('08:00','13:00'),('13:00','18:00'),('18:00','08:00')],'sdd':[('18:00','04:00'),('04:00','09:00'),('09:00','13:30'),('13:30','18:00')],'spxck':[('17:00','17:00')]}
         for k,c in DEFAULT_CONFIG.items(): self.assertEqual([(x['start'],x['end']) for x in c['cots']],expected[k])
@@ -91,6 +138,42 @@ class NativeTests(unittest.TestCase):
         self.assertEqual(len(self.tab.orders),2112);self.assertEqual(len(calls),4)
         self.assertEqual(sum(m['url']==URL_EXPORT for m in calls),1);self.assertFalse(any(m['url']==URL_ORDER for m in calls))
         extra=json.loads(calls[1]['body']['extra_data']);self.assertEqual(extra['date_ref'],0);self.assertEqual(extra['include_sku_list'],1)
+    def test_export_filters_all_carriers_and_keeps_saved_windows(self):
+        saved=copy.deepcopy(DEFAULT_CONFIG)
+        saved['intra']['channels']=[]
+        saved['intra']['cots'][0]['start']='19:30'
+        tab=ChromeCotTab({'cot_web_v14':{'intracityConfigV11':saved}},lambda c:True)
+        try:
+            self.assertEqual(tab.config['intra']['cots'][0]['start'],'19:30')
+            tab.bridge.connected=True
+            expected={'intra':['50057','50021'],'aha':['50033','50044'],'sdd':['50051'],'spxck':['50025']}
+            for key,channels in expected.items():
+                calls=[]
+                def request(msg,cb):
+                    calls.append(msg)
+                    if msg['type']=='WMS_POST':cb({'task_id':'NEW'})
+                    elif msg['type']=='WMS_DOWNLOAD':cb(base64.b64encode(fixture([])).decode())
+                    elif len(calls)==1:cb({'list':[]})
+                    else:cb({'list':[dict(task_id='NEW',task_status=2,download_link=ORIGIN+'/oss_downloads_v2/fixture',export_file_name='fixture.xlsx')]})
+                tab.request=request
+                tab.carrier.setCurrentIndex(tab.carrier.findData(key))
+                self.assertEqual(calls,[])
+                tab.fetch_dataset();self.wait(lambda:not tab.busy)
+                posts=[m for m in calls if m['type']=='WMS_POST']
+                self.assertEqual(len(posts),1)
+                self.assertEqual(sum(m['type']=='WMS_DOWNLOAD' for m in calls),1)
+                extra=json.loads(posts[0]['body']['extra_data'])
+                self.assertEqual(extra['channel_id_list'],channels)
+                _,_,beg,end=tab.current_range()
+                self.assertEqual(extra['beg_ctime'],int(beg.timestamp()))
+                self.assertEqual(extra['end_ctime'],int(end.timestamp()))
+                self.assertEqual(extra['time_from'],extra['beg_ctime'])
+                self.assertEqual(extra['time_to'],extra['end_ctime'])
+        finally:
+            if tab.parser:tab.parser.wait(10000)
+            import shiboken6
+            shiboken6.delete(tab)
+
     def test_status_area_200_cached_and_filters_local(self):
         self.tab.orders=parse_report(fixture([[f'OB{i}','Picked','SPX Express','Hà Nội'] for i in range(7)]),'x.xlsx','intra')['orders'];self.tab.render_all();calls=[]
         def request(msg,cb):calls.append(msg);cb({'total':7,'list':[dict(order_number=f'OB{i}',pre_hit_zone_list=['Z1']) for i in range(7)]})
@@ -151,6 +234,5 @@ class NativeTests(unittest.TestCase):
         self.assertNotIn('QtWebEngine',code);self.assertNotIn('urllib.request',code)
 
 if __name__=='__main__':unittest.main(verbosity=2)
-
 
 

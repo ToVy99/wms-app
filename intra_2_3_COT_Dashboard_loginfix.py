@@ -34,7 +34,7 @@ from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.figure import Figure
 
 # ================= CẤU HÌNH PHIÊN BẢN & AUTO-UPDATE =================
-CURRENT_VERSION = "2.4.5_Chrome_Native14"
+CURRENT_VERSION = "3.2"
 def _config_file_path():
     if not getattr(sys, "frozen", False):
         return os.path.join(os.path.dirname(os.path.abspath(__file__)), "wms_config.json")
@@ -226,6 +226,7 @@ QFrame#bottomStatusBar {
 """
 
 from chrome_cot import ChromeCotTab
+from ui_theme import ThemeController
 
 # ================= TÍNH NĂNG TỰ ĐỘNG CẬP NHẬT =================
 class AutoUpdaterThread(QThread):
@@ -267,10 +268,20 @@ class ChartCanvas(FigureCanvas):
         self.apply_theme_colors()
 
     def apply_theme_colors(self):
-        bg_color = "#181825"
-        self.text_color = "#cdd6f4"
+        bg_color = "#ffffff" if getattr(self,'light_theme',False) else "#181825"
+        self.text_color = "#24324b" if getattr(self,'light_theme',False) else "#cdd6f4"
         self.figure.set_facecolor(bg_color)
         self.axes.set_facecolor(bg_color)
+
+    def set_light_theme(self,light):
+        if getattr(self,'light_theme',None)==light:return
+        self.light_theme=light;self.apply_theme_colors()
+        self.axes.title.set_color(self.text_color)
+        if self.axes.get_legend():
+            for text in self.axes.get_legend().get_texts():text.set_color(self.text_color)
+        for text in self.axes.texts:
+            if text.get_text()=='Chưa có dữ liệu':text.set_color(self.text_color)
+        self.draw_idle()
 
     def plot_pie(self, series_data, title_text=""):
         self.apply_theme_colors()
@@ -423,11 +434,30 @@ class CheckableComboBox(QComboBox):
         self.setEditable(True)
         self.lineEdit().setReadOnly(True)
         self.lineEdit().setCursor(QCursor(Qt.PointingHandCursor))
+        self.lineEdit().installEventFilter(self)
         
         self.view().setCursor(QCursor(Qt.PointingHandCursor))
+        self.view().setProperty('preserveThemeColors',True)
         self.view().pressed.connect(self._on_item_pressed)
         
         self._is_updating_select_all = False
+
+    def set_popup_theme(self,light):
+        if getattr(self,'_popup_light',None)==light:return
+        self._popup_light=light
+        bg,fg,border,hover=('#ffffff','#24324b','#b8c6dc','#e0edff') if light else ('#181825','#cdd6f4','#535974','#363951')
+        self.view().setStyleSheet(f'QListView {{background:{bg}; color:{fg}; border:1px solid {border}; padding:4px;}} QListView::item {{padding:6px;}} QListView::item:hover,QListView::item:selected {{background:{hover}; color:{fg};}}')
+
+    def eventFilter(self,obj,event):
+        if obj is self.lineEdit() and event.type()==QEvent.MouseButtonRelease and event.button()==Qt.LeftButton:
+            if self.view().isVisible():self.hidePopup()
+            else:self.showPopup()
+            return True
+        return super().eventFilter(obj,event)
+
+    def showPopup(self):
+        super().showPopup()
+        self.update_text()
 
     def populate_items(self, items, default_selected=None):
         model = self.model()
@@ -726,23 +756,39 @@ class WMSDashboard(QWidget):
 
         self.config = load_config()
 
-        self.setWindowTitle("IntraCity v2.4")
+        self.setWindowTitle("IntraCity 3.2")
         self.resize(1680, 950)
         self.setStyleSheet(MODERN_STYLE)
 
         self.table_model = PandasModel()
 
         self.build_ui()
+        self.theme_controller=ThemeController(self,save_config)
+        self.themeChoice.setCurrentIndex(self.themeChoice.findData(self.theme_controller.mode))
+        self.themeChoice.currentIndexChanged.connect(lambda _:self.theme_controller.choose(self.themeChoice.currentData()))
         self.start_folder_watcher()
+        self._closing=False
+        self._notified_versions=set()
+        self.update_timer=QTimer(self)
+        self.update_timer.setInterval(10*60*1000)
+        self.update_timer.timeout.connect(self.check_for_updates)
+        self.update_timer.start()
         self.check_for_updates()
 
     def check_for_updates(self):
-        self.updater_thread = AutoUpdaterThread()
+        if self._closing:return
+        old=getattr(self,'updater_thread',None)
+        if old is not None:
+            if old.isRunning():return
+            old.deleteLater()
+        self.updater_thread = AutoUpdaterThread(self)
         self.updater_thread.update_available.connect(self.prompt_update)
         self.updater_thread.start()
 
     def prompt_update(self, update_info):
         new_version = update_info.get("version", "Mới")
+        if self._closing or new_version in self._notified_versions:return
+        self._notified_versions.add(new_version)
         download_url = update_info.get("download_url", "")
         changelog = update_info.get("changelog", "Cập nhật hệ thống.")
 
@@ -855,11 +901,9 @@ del /F /Q "{backup_exe}" >nul 2>&1
 
         global_top.addWidget(self.btnLoginWMS)
         global_top.addWidget(self.lblWMSState)
-        global_top.addStretch()
         root.addLayout(global_top)
 
         # ===== Banner trạng thái dùng chung =====
-        status_layout = QHBoxLayout()
         self.statusBanner = QFrame()
         self.statusBanner.setFrameShape(QFrame.StyledPanel)
         banner_inner = QHBoxLayout(self.statusBanner)
@@ -873,9 +917,14 @@ del /F /Q "{backup_exe}" >nul 2>&1
 
         banner_inner.addWidget(self.lblGifIcon)
         banner_inner.addWidget(self.lblStatusMsg)
-        status_layout.addWidget(self.statusBanner)
-        status_layout.addStretch()
-        root.addLayout(status_layout)
+        global_top.addSpacing(18)
+        global_top.addWidget(self.statusBanner)
+        global_top.addStretch()
+        global_top.addWidget(QLabel('Giao diện'))
+        self.themeChoice=QComboBox()
+        for title,mode in [('Theo máy','system'),('Sáng','light'),('Tối','dark')]:self.themeChoice.addItem(title,mode)
+        self.themeChoice.setToolTip('Theo máy tự chuyển theo giao diện Windows; lựa chọn được lưu cho lần mở sau.')
+        global_top.addWidget(self.themeChoice)
 
         self.anim_timer = QTimer(self)
         self.anim_timer.timeout.connect(self._update_loading_animation)
@@ -1189,6 +1238,7 @@ del /F /Q "{backup_exe}" >nul 2>&1
                 self.statusBanner.setStyleSheet("background-color: #442a38; border-radius: 6px;")
                 self.lblStatusMsg.setStyleSheet("font-size: 13px; font-weight: bold; color: #f38ba8;")
                 self.lblStatusMsg.setText(custom_msg if custom_msg else "❌ Lỗi đọc dữ liệu!")
+        if hasattr(self,'theme_controller'):self.theme_controller.apply()
 
     def _update_loading_animation(self):
         self.dots_count = (self.dots_count % 4) + 1
@@ -1244,6 +1294,7 @@ del /F /Q "{backup_exe}" >nul 2>&1
         self.statusBanner.setStyleSheet("background-color: #313244; border-radius: 6px;")
         self.lblStatusMsg.setStyleSheet("font-size: 13px; font-weight: bold; color: #cdd6f4;")
         self.lblStatusMsg.setText("🔄 Đã làm mới bảng làm việc.")
+        if hasattr(self,'theme_controller'):self.theme_controller.apply()
 
     def start_folder_watcher(self, path=None):
         if hasattr(self, 'watcher_thread') and self.watcher_thread.isRunning():
@@ -1613,10 +1664,13 @@ del /F /Q "{backup_exe}" >nul 2>&1
 
 
     def closeEvent(self, event):
+        self._closing=True
+        self.update_timer.stop()
         self._pending_load = None
         if (self.cotTab.parser and self.cotTab.parser.isRunning()) or not self.cotTab.bridge.stop():
             self.set_banner_status(True, custom_msg="Đang dừng tác vụ Chrome, hãy đóng app lại sau ít giây...")
             event.ignore()
+            self._closing=False;self.update_timer.start()
             return
 
         if self.loader_thread is not None and self.loader_thread.isRunning():
@@ -1626,12 +1680,18 @@ del /F /Q "{backup_exe}" >nul 2>&1
                     custom_msg="⌛ Đang hoàn tất đọc dữ liệu trước khi đóng ứng dụng..."
                 )
                 event.ignore()
+                self._closing=False;self.update_timer.start()
                 return
 
         if hasattr(self, "watcher_thread") and self.watcher_thread is not None:
             if self.watcher_thread.isRunning():
                 self.watcher_thread.stop()
 
+        updater=getattr(self,'updater_thread',None)
+        if updater is not None and updater.isRunning() and not updater.wait(5500):
+            event.ignore()
+            QTimer.singleShot(300,self.close)
+            return
         event.accept()
 
 
@@ -1641,6 +1701,5 @@ if __name__ == "__main__":
     window = WMSDashboard()
     window.show()
     sys.exit(app.exec())
-
 
 

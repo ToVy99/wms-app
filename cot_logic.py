@@ -13,7 +13,7 @@ URL_EXPORT = ORIGIN + '/api/v2/apps/basic/reportcenter/create_export_task'
 URL_EXPORT_LIST = ORIGIN + '/api/v2/apps/basic/reportcenter/search_export_task?pageno=1&count=20&export_module=2&task_type=722&is_myself=1'
 STATUSES = ['Created','Pending Pick','Picking','Picked','Pick Fail','Checking','Checked','Pre Sorting','Pre Sorted','Sorting','Sorted','Packing','Packed','Shipping','Outbound','Cancel']
 DEFAULT_CONFIG = {
- 'intra': {'name':'Intra City','channels':[],'cots':[{'id':str(i+1),'name':f'COT {i+1}','start':a,'end':b} for i,(a,b) in enumerate([('20:00','23:00'),('23:00','02:00'),('02:00','16:00'),('16:00','20:00')])]},
+ 'intra': {'name':'Intra City','channels':['50057','50021'],'cots':[{'id':str(i+1),'name':f'COT {i+1}','start':a,'end':b} for i,(a,b) in enumerate([('20:00','23:00'),('23:00','02:00'),('02:00','16:00'),('16:00','20:00')])]},
  'aha': {'name':'AhaMove','channels':['50033','50044'],'cots':[{'id':str(i+1),'name':f'COT {i+1}','start':a,'end':b} for i,(a,b) in enumerate([('08:00','13:00'),('13:00','18:00'),('18:00','08:00')])]},
  'sdd': {'name':'SDD','channels':['50051'],'cots':[{'id':str(i+1),'name':f'COT {i+1}','start':a,'end':b} for i,(a,b) in enumerate([('18:00','04:00'),('04:00','09:00'),('09:00','13:30'),('13:30','18:00')])]},
  'spxck': {'name':'SPX CK (Cồng kềnh)','channels':['50025'],'previous':True,'cots':[{'id':'daily','name':'17H → 17H','start':'17:00','end':'17:00'}]},
@@ -28,9 +28,11 @@ def time_range(day, carrier, cot):
         end += timedelta(days=1)
     return beg, end
 
-def export_body(beg, end):
+def export_body(beg, end, channels):
+    if not channels:
+        raise ValueError("Chưa có mã nhà vận chuyển cho nhóm COT.")
     a,b = int(beg.timestamp()),int(end.timestamp())
-    extra = dict(beg_ctime=a,end_ctime=b,from_listpage=1,include_sku_list=1,order_type=0,date_ref=0,time_from=a,time_to=b)
+    extra = dict(beg_ctime=a,end_ctime=b,channel_id_list=list(channels),from_listpage=1,include_sku_list=1,order_type=0,date_ref=0,time_from=a,time_to=b)
     return dict(export_module=2,task_type=722,extra_data=json.dumps(extra,separators=(',',':')))
 
 def choose_job(jobs, old_ids, started, task_id=None):
@@ -63,13 +65,18 @@ def parse_report(data, name, key):
             inner = next((n for n in z.namelist() if n.lower().endswith('.xlsx')),None)
             if not inner: raise ValueError('ZIP không có file XLSX.')
             data = z.read(inner)
-    wb = load_workbook(io.BytesIO(data),read_only=True,data_only=True)
+    wb = None
     try:
-        sheet = wb.worksheets[0]
-        # WMS reports can declare dimension=A1 while containing 67 columns
-        # and thousands of rows. Read actual cells instead of trusting bounds.
-        sheet.reset_dimensions()
-        rows = sheet.iter_rows(values_only=True)
+        try:
+            import pandas as pd
+            frame=pd.read_excel(io.BytesIO(data),engine='calamine',header=None,dtype=object,keep_default_na=False)
+            rows=frame.itertuples(index=False,name=None)
+        except Exception:
+            wb = load_workbook(io.BytesIO(data),read_only=True,data_only=True)
+            sheet = wb.worksheets[0]
+            # Read real cells even if WMS incorrectly declares dimension=A1.
+            sheet.reset_dimensions()
+            rows = sheet.iter_rows(values_only=True)
         headers = next(rows,None)
         if headers is None: raise ValueError('Report không có tiêu đề.')
         indices = {str(v or '').strip():i for i,v in enumerate(headers)}
@@ -89,14 +96,16 @@ def parse_report(data, name, key):
             if ob not in grouped:
                 status = str(get('Status')).strip()
                 code = next((i for i,s in enumerate(STATUSES) if s.lower()==status.lower()),status)
-                grouped[ob] = dict(order_number=ob,order_status=code,status_text=status,wave_type=str(get('Wave Type')).strip(),sns=set(),picking=set(),bsks=set(),area='-',ctime_text=str(get('Create Time')),cutoff_text=str(get('Cut off Time')))
+                grouped[ob] = dict(order_number=ob,order_status=code,status_text=status,wave_type=str(get('Wave Type')).strip(),sns=set(),picking=set(),bsks=set(),sku_names=set(),search_values=set(),area='-',ctime_text=str(get('Create Time')),cutoff_text=str(get('Cut off Time')))
             o = grouped[ob]
-            for col,dest in [('Shopee order SN','sns'),('Picking ID','picking'),('Device ID','bsks'),('Basket ID','bsks')]:
+            # Keep all report columns searchable, including fields not shown in the table.
+            o['search_values'].update(str(v).strip() for v in row if v is not None and str(v).strip())
+            for col,dest in [('Shopee order SN','sns'),('Picking ID','picking'),('Device ID','bsks'),('Basket ID','bsks'),('SKU Name','sku_names')]:
                 v = get(col)
                 if v: o[dest].add(str(v))
         return dict(orders=[o for o in grouped.values() if o['order_status']!=15],rawRows=raw,filteredRows=filtered)
     finally:
-        wb.close()
+        if wb is not None:wb.close()
 
 def status_name(code):
     return STATUSES[code] if isinstance(code,int) and 0<=code<len(STATUSES) else str(code)
