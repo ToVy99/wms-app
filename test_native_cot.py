@@ -199,12 +199,12 @@ class NativeTests(unittest.TestCase):
         self.tab.basket_filter.click()
         self.assertEqual([o['order_number'] for o in self.tab.visible()],['A','B'])
         self.assertEqual(self.tab.table.item(0,4).text(),'BSK-A, BSK-A2')
-        self.assertEqual(self.tab.table.rowCount(),2); self.assertEqual(self.tab.basket_filter.text(),'Picked có mã rổ (2)')
+        self.assertEqual(self.tab.table.rowCount(),2); self.assertEqual(self.tab.basket_filter.text(),'Picked có mã rổ')
         self.assertEqual(self.tab.selected,set()); self.tab.copy_obvn(); self.assertEqual(self.app.clipboard().text(),'A\nB')
         self.assertEqual(self.tab.total_card.value.text(),'5'); self.assertEqual(self.tab.outbound_card.value.text(),'1'); self.assertEqual(self.tab.percent_card.value.text(),'20.0%')
         self.tab.basket_filter.click(); self.assertEqual(self.tab.table.rowCount(),4)
         self.assertEqual(calls,[])
-        self.tab.scope_changed(); self.assertFalse(self.tab.picked_baskets_only); self.assertEqual(self.tab.basket_filter.text(),'Picked có mã rổ (0)')
+        self.tab.scope_changed(); self.assertFalse(self.tab.picked_baskets_only); self.assertEqual(self.tab.basket_filter.text(),'Picked có mã rổ')
 
     def test_status_panel_keeps_slots_and_height_across_data_changes(self):
         self.tab.resize(1500,800); self.tab.show(); self.app.processEvents()

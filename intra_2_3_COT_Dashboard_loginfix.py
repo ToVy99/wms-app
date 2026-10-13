@@ -34,7 +34,8 @@ from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.figure import Figure
 
 # ================= CẤU HÌNH PHIÊN BẢN & AUTO-UPDATE =================
-CURRENT_VERSION = "3.2"
+from release_notes import VERSION, TITLE, show_changes
+CURRENT_VERSION = VERSION
 def _config_file_path():
     if not getattr(sys, "frozen", False):
         return os.path.join(os.path.dirname(os.path.abspath(__file__)), "wms_config.json")
@@ -756,7 +757,7 @@ class WMSDashboard(QWidget):
 
         self.config = load_config()
 
-        self.setWindowTitle("IntraCity 3.2")
+        self.setWindowTitle(TITLE)
         self.resize(1680, 950)
         self.setStyleSheet(MODERN_STYLE)
 
@@ -774,6 +775,8 @@ class WMSDashboard(QWidget):
         self.update_timer.timeout.connect(self.check_for_updates)
         self.update_timer.start()
         self.check_for_updates()
+        if '--smoke-test' not in sys.argv:
+            QTimer.singleShot(0,lambda:show_changes(self,save_config,automatic=True) if not self._closing else None)
 
     def check_for_updates(self):
         if self._closing:return
@@ -925,6 +928,8 @@ del /F /Q "{backup_exe}" >nul 2>&1
         for title,mode in [('Theo máy','system'),('Sáng','light'),('Tối','dark')]:self.themeChoice.addItem(title,mode)
         self.themeChoice.setToolTip('Theo máy tự chuyển theo giao diện Windows; lựa chọn được lưu cho lần mở sau.')
         global_top.addWidget(self.themeChoice)
+        self.changes_button=QPushButton('Xem thay đổi'); self.changes_button.clicked.connect(lambda:show_changes(self,save_config))
+        global_top.addWidget(self.changes_button)
 
         self.anim_timer = QTimer(self)
         self.anim_timer.timeout.connect(self._update_loading_animation)

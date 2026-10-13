@@ -1,4 +1,4 @@
-IntraCity 3.2 — giao diện cập nhật (mã nội bộ 3.2)
+IntraCity 3.3 — giao diện cập nhật (mã nội bộ 3.3)
 
 Các thay đổi:
 - Sẵn sàng làm việc nằm cùng hàng Đăng nhập WMS.
@@ -21,7 +21,7 @@ Các thay đổi:
 3. Mở PowerShell trong thư mục này, chạy:
    powershell.exe -NoProfile -ExecutionPolicy Bypass -File ".\build_windows.ps1"
 4. Sau khi build và kiểm tra hoàn tất, file chạy nằm tại:
-   dist\IntraCity 3.2.exe
+   dist\IntraCity 3.3.exe
 
 Không chỉ đóng gói một file .py; giữ đầy đủ các file của bộ nguồn này.
 Script dùng py -3.12, tạo .venv-build, cài các thư viện cần thiết,
@@ -78,3 +78,12 @@ SỬA MỞ DANH SÁCH 3PL / BUYER STATE:
 - Danh sách có nền/chữ riêng theo Sáng/Tối từ lúc khởi động.
 - Bấm phần chữ hoặc mũi tên của 3PL/Buyer State để mở danh sách.
 - Giữ nguyên các lựa chọn lọc khi đổi giao diện.
+
+CẬP NHẬT 3.3:
+- Đọc mọi XLSX trong ZIP (kể cả thư mục con), mọi sheet dữ liệu đơn.
+- Gom OBVN xuyên file/sheet, giữ nguyên lọc và tính %; báo lỗi nếu file hỏng.
+- Thu gọn thống kê, bảng đơn trượt phủ phần trên, lưu vị trí kéo.
+- Chọn ô/cột màu vàng và Ctrl+C, thêm cột Picking ID và bảng Picking ID/BSK.
+- Mã rổ chỉ hiện cho Picked, bỏ tổng trên nút Picked có mã rổ.
+- Lưu Excel gốc lưu nguyên bytes lần tải gần nhất (XLSX/ZIP), không gọi WMS.
+- Có gì mới hiện lần đầu phiên bản; Đã hiểu để lưu, Xem thay đổi để đọc lại.

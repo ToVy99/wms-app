@@ -58,54 +58,90 @@ def carrier_match(key, service, state):
         return v=='spx - hàng cồng kềnh'
     raise ValueError('Không có bộ lọc nhóm '+key)
 
-def parse_report(data, name, key):
-    # Detect both a direct XLSX and an outer ZIP, independently of file suffix.
-    with zipfile.ZipFile(io.BytesIO(data)) as z:
-        if 'xl/workbook.xml' not in z.namelist():
-            inner = next((n for n in z.namelist() if n.lower().endswith('.xlsx')),None)
-            if not inner: raise ValueError('ZIP không có file XLSX.')
-            data = z.read(inner)
-    wb = None
+def report_files(data, name):
+    """Yield each workbook once, including workbooks in ZIP subfolders."""
+    with zipfile.ZipFile(io.BytesIO(data)) as archive:
+        if 'xl/workbook.xml' in archive.namelist():
+            yield name, data
+            return
+        members=[m for m in archive.infolist() if not m.is_dir()
+                 and m.filename.lower().endswith('.xlsx')
+                 and not m.filename.startswith('__MACOSX/')
+                 and not m.filename.rsplit('/',1)[-1].startswith(('~$','._'))]
+        if not members:
+            raise ValueError('ZIP không có file XLSX.')
+        for member in members:
+            yield member.filename, archive.read(member)
+
+
+def report_sheets(data):
+    """Read sheets one at a time; retain OpenPyXL fallback for malformed exports."""
+    book=None; fallback=None
     try:
         try:
             import pandas as pd
-            frame=pd.read_excel(io.BytesIO(data),engine='calamine',header=None,dtype=object,keep_default_na=False)
-            rows=frame.itertuples(index=False,name=None)
+            book=pd.ExcelFile(io.BytesIO(data),engine='calamine')
+            names=book.sheet_names
         except Exception:
-            wb = load_workbook(io.BytesIO(data),read_only=True,data_only=True)
-            sheet = wb.worksheets[0]
-            # Read real cells even if WMS incorrectly declares dimension=A1.
-            sheet.reset_dimensions()
-            rows = sheet.iter_rows(values_only=True)
-        headers = next(rows,None)
-        if headers is None: raise ValueError('Report không có tiêu đề.')
-        indices = {str(v or '').strip():i for i,v in enumerate(headers)}
-        required = ['WMS Order No','Status','New 3PL'] + (['Buyer State'] if key=='intra' else [])
-        for col in required:
-            if col not in indices: raise ValueError('Report thiếu '+col)
-        grouped = {}; raw = filtered = 0
-        for row in rows:
-            def get(col):
-                i = indices.get(col)
-                return row[i] if i is not None and i<len(row) and row[i] is not None else ''
-            ob = str(get('WMS Order No')).strip()
-            if not ob: continue
-            raw += 1
-            if not carrier_match(key,get('New 3PL'),get('Buyer State')): continue
-            filtered += 1
-            if ob not in grouped:
-                status = str(get('Status')).strip()
-                code = next((i for i,s in enumerate(STATUSES) if s.lower()==status.lower()),status)
-                grouped[ob] = dict(order_number=ob,order_status=code,status_text=status,wave_type=str(get('Wave Type')).strip(),sns=set(),picking=set(),bsks=set(),sku_names=set(),search_values=set(),area='-',ctime_text=str(get('Create Time')),cutoff_text=str(get('Cut off Time')))
-            o = grouped[ob]
-            # Keep all report columns searchable, including fields not shown in the table.
-            o['search_values'].update(str(v).strip() for v in row if v is not None and str(v).strip())
-            for col,dest in [('Shopee order SN','sns'),('Picking ID','picking'),('Device ID','bsks'),('Basket ID','bsks'),('SKU Name','sku_names')]:
-                v = get(col)
-                if v: o[dest].add(str(v))
-        return dict(orders=[o for o in grouped.values() if o['order_status']!=15],rawRows=raw,filteredRows=filtered)
+            fallback=load_workbook(io.BytesIO(data),read_only=True,data_only=True)
+            names=fallback.sheetnames
+        for name in names:
+            if book is not None:
+                try:
+                    frame=book.parse(name,header=None,dtype=object,keep_default_na=False)
+                    yield name, frame.itertuples(index=False,name=None)
+                    del frame
+                    continue
+                except Exception:
+                    if fallback is None:
+                        fallback=load_workbook(io.BytesIO(data),read_only=True,data_only=True)
+            sheet=fallback[name];sheet.reset_dimensions()
+            yield name, sheet.iter_rows(values_only=True)
     finally:
-        if wb is not None:wb.close()
+        if book is not None:book.close()
+        if fallback is not None:fallback.close()
+
+
+def parse_report(data, name, key):
+    grouped={};raw=filtered=files=sheets=0
+    required=['WMS Order No','Status','New 3PL']+(['Buyer State'] if key=='intra' else [])
+    for filename, workbook in report_files(data,name):
+        files+=1;valid_sheets=0
+        try:
+            for sheetname, rows in report_sheets(workbook):
+                headers=next(rows,None)
+                if headers is None:continue
+                indices={str(v or '').strip():i for i,v in enumerate(headers)}
+                # Ignore notes/summary sheets, but never silently skip a broken order sheet.
+                if 'WMS Order No' not in indices:continue
+                for col in required:
+                    if col not in indices:raise ValueError(f'Sheet {sheetname}: Report thiếu {col}')
+                valid_sheets+=1;sheets+=1
+                for row in rows:
+                    def get(col):
+                        i = indices.get(col)
+                        return row[i] if i is not None and i<len(row) and row[i] is not None else ''
+                    ob = str(get('WMS Order No')).strip()
+                    if not ob: continue
+                    raw += 1
+                    if not carrier_match(key,get('New 3PL'),get('Buyer State')): continue
+                    filtered += 1
+                    if ob not in grouped:
+                        status = str(get('Status')).strip()
+                        code = next((i for i,s in enumerate(STATUSES) if s.lower()==status.lower()),status)
+                        grouped[ob] = dict(order_number=ob,order_status=code,status_text=status,wave_type=str(get('Wave Type')).strip(),sns=set(),picking=set(),bsks=set(),sku_names=set(),search_values=set(),area='-',ctime_text=str(get('Create Time')),cutoff_text=str(get('Cut off Time')))
+                    o = grouped[ob]
+                    # Keep all report columns searchable, including fields not shown in the table.
+                    o['search_values'].update(str(v).strip() for v in row if v is not None and str(v).strip())
+                    for col,dest in [('Shopee order SN','sns'),('Picking ID','picking'),('Device ID','bsks'),('Basket ID','bsks'),('SKU Name','sku_names')]:
+                        v = get(col)
+                        if v: o[dest].add(str(v))
+            if not valid_sheets:
+                raise ValueError('Report thiếu WMS Order No hoặc không có sheet dữ liệu đơn.')
+        except Exception as exc:
+            raise ValueError(f'{filename}: {exc}') from exc
+    return dict(orders=[o for o in grouped.values() if o['order_status']!=15],
+                rawRows=raw,filteredRows=filtered,reportFiles=files,reportSheets=sheets)
 
 def status_name(code):
     return STATUSES[code] if isinstance(code,int) and 0<=code<len(STATUSES) else str(code)
