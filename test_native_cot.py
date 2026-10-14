@@ -84,7 +84,7 @@ class NativeTests(unittest.TestCase):
         self.tab.search.clear();self.assertEqual(self.tab.table.rowCount(),2)
         self.tab.toggle_picked_baskets(True);self.tab.search.setText('pick-b');self.assertEqual(self.tab.table.rowCount(),0)
         self.tab.search.setText('pick-a');self.assertEqual(self.tab.table.rowCount(),1)
-        self.tab.select_cot('2');self.assertEqual(self.tab.search.text(),'')
+        self.tab.select_cot('2');self.assertEqual(self.tab.search.text(),'pick-a')
         self.assertEqual(calls,[])
     def test_exact_windows_and_year_rollover(self):
         expected={'intra':[('20:00','23:00'),('23:00','02:00'),('02:00','16:00'),('16:00','20:00')],'aha':[('08:00','13:00'),('13:00','18:00'),('18:00','08:00')],'sdd':[('18:00','04:00'),('04:00','09:00'),('09:00','13:30'),('13:30','18:00')],'spxck':[('17:00','17:00')]}

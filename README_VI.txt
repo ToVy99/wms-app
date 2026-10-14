@@ -1,4 +1,4 @@
-IntraCity 3.3 — giao diện cập nhật (mã nội bộ 3.3)
+IntraCity 3.3.1 — giao diện cập nhật (mã nội bộ 3.3.1)
 
 Các thay đổi:
 - Sẵn sàng làm việc nằm cùng hàng Đăng nhập WMS.
@@ -21,7 +21,7 @@ Các thay đổi:
 3. Mở PowerShell trong thư mục này, chạy:
    powershell.exe -NoProfile -ExecutionPolicy Bypass -File ".\build_windows.ps1"
 4. Sau khi build và kiểm tra hoàn tất, file chạy nằm tại:
-   dist\IntraCity 3.3.exe
+   dist\IntraCity 3.3.1.exe
 
 Không chỉ đóng gói một file .py; giữ đầy đủ các file của bộ nguồn này.
 Script dùng py -3.12, tạo .venv-build, cài các thư viện cần thiết,
@@ -87,3 +87,9 @@ CẬP NHẬT 3.3:
 - Mã rổ chỉ hiện cho Picked, bỏ tổng trên nút Picked có mã rổ.
 - Lưu Excel gốc lưu nguyên bytes lần tải gần nhất (XLSX/ZIP), không gọi WMS.
 - Có gì mới hiện lần đầu phiên bản; Đã hiểu để lưu, Xem thay đổi để đọc lại.
+
+CẬP NHẬT 3.3.1:
+- Giữ dữ liệu cũ và bộ lọc đến khi đọc report mới thành công; lỗi vẫn giữ bảng cũ.
+- Ghi rõ khung giờ dữ liệu đang hiển thị, kể cả khi chọn COT khác.
+- Vòng xoay xanh và giai đoạn tải cạnh nút Tải dữ liệu; không thêm API.
+- Nút tải nền cam vàng, có hover và khóa khi đang xử lý.

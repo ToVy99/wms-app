@@ -1,7 +1,28 @@
 """Local table selection and sliding order panel; no WMS transport."""
-from PySide6.QtCore import Qt, Signal
-from PySide6.QtGui import QKeySequence
+from PySide6.QtCore import Qt, Signal, QTimer, QRectF
+from PySide6.QtGui import QKeySequence, QPainter, QColor, QPen
 from PySide6.QtWidgets import QWidget, QTableWidget, QAbstractItemView, QApplication, QLabel
+
+class LoadingSpinner(QWidget):
+    """Small local animation; its timer only repaints and never requests data."""
+    def __init__(self,parent=None):
+        super().__init__(parent)
+        self.setFixedSize(22,22);self.angle=0
+        self.timer=QTimer(self);self.timer.setInterval(60)
+        self.timer.timeout.connect(self.advance)
+        self.setAccessibleName('Đang tải dữ liệu')
+    def advance(self):
+        self.angle=(self.angle+24)%360;self.update()
+    def set_running(self,running):
+        if running:self.timer.start()
+        else:self.timer.stop()
+        self.setVisible(running)
+    def paintEvent(self,event):
+        painter=QPainter(self);painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        rect=QRectF(3,3,16,16)
+        painter.setPen(QPen(QColor('#a7c9eb'),2.5));painter.drawEllipse(rect)
+        pen=QPen(QColor('#2389ef'),2.5);pen.setCapStyle(Qt.PenCapStyle.RoundCap)
+        painter.setPen(pen);painter.drawArc(rect,-self.angle*16,105*16)
 
 class CopyTable(QTableWidget):
     def __init__(self, *args):

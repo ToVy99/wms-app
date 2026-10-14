@@ -91,4 +91,45 @@ class Release33Tests(unittest.TestCase):
                 show_changes(window,lambda c:False);window._whats_new_dialog.accept()
             self.assertNotIn('seen_release',window.config)
         finally:window.close();window.theme_controller.disconnect_signals();window.deleteLater()
+    def test_refresh_keeps_old_rows_filters_selection_and_metrics_until_success(self):
+        tab=ChromeCotTab({},lambda c:True)
+        try:
+            old=parse_report(fixture([['OLD','Picked','SPX Express','Hà Nội','SN','Single','P1','','B1']]),'old.xlsx','intra')
+            tab.scope=tab.current_range();tab.report_name='old.xlsx';tab.parsed(old)
+            tab.search.setText('old');tab.select_visible();tab.table.selectColumn(9)
+            initial=(tab.table.item(0,1).text(),tab.total_card.value.text(),tab.percent_card.value.text(),tab.active_status,tab.search.text(),set(tab.selected),[(i.row(),i.column()) for i in tab.table.selectedIndexes()])
+            calls=[];tab.request=lambda msg,cb:calls.append((msg,cb));tab.bridge.connected=True
+            tab.select_cot('2');tab.fetch_dataset();tab.fetch_dataset()
+            self.assertEqual(len(calls),1);self.assertTrue(tab.busy);self.assertFalse(tab.load.isEnabled());self.assertTrue(tab.spinner.timer.isActive())
+            self.assertIn('lần tải trước',tab.dataset_note.text())
+            actual=(tab.table.item(0,1).text(),tab.total_card.value.text(),tab.percent_card.value.text(),tab.active_status,tab.search.text(),set(tab.selected),[(i.row(),i.column()) for i in tab.table.selectedIndexes()])
+            self.assertEqual(actual,initial)
+            tab.fail('HTTP 429');self.assertEqual(tab.orders,old['orders']);self.assertFalse(tab.spinner.timer.isActive());self.assertTrue(tab.load.isEnabled())
+            self.assertIn('lần tải trước',tab.dataset_note.text())
+            tab.fetch_dataset();tab.report_name='new.xlsx';tab.parsed(parse_report(fixture([]),'new.xlsx','intra'))
+            self.assertEqual(tab.orders,[]);self.assertEqual(tab.table.rowCount(),0);self.assertEqual(tab.total_card.value.text(),'0')
+            self.assertEqual(tab.search.text(),'');self.assertEqual(tab.loaded_scope,tab.current_range());self.assertNotIn('lần tải trước',tab.dataset_note.text())
+        finally:tab.close();tab.deleteLater()
+    def test_parse_error_retains_previous_dataset_and_stops_spinner(self):
+        tab=ChromeCotTab({},lambda c:True)
+        try:
+            old=parse_report(fixture([['OLD','Picked','SPX Express','Hà Nội']]),'old.xlsx','intra')
+            tab.scope=tab.current_range();tab.report_name='old.xlsx';tab.parsed(old)
+            tab.bridge.connected=True;calls=[];tab.request=lambda msg,cb:calls.append(msg);tab.fetch_dataset()
+            angle=tab.spinner.angle;QTest.qWait(140);self.assertNotEqual(tab.spinner.angle,angle);self.assertEqual(len(calls),1)
+            tab.report_name='broken.xlsx';tab.got_bytes(base64.b64encode(b'broken').decode())
+            self.assertIn('Đang đọc',tab.loading_stage.text());tab.parser.wait(10000);self.app.processEvents()
+            self.assertEqual(tab.orders,old['orders']);self.assertEqual(tab.table.item(0,1).text(),'OLD');self.assertFalse(tab.busy);self.assertFalse(tab.spinner.timer.isActive());self.assertIn('Lỗi:',tab.message.text())
+        finally:tab.close();tab.deleteLater()
+    def test_area_request_uses_displayed_scope_after_switching_cot(self):
+        tab=ChromeCotTab({},lambda c:True)
+        try:
+            tab.scope=tab.current_range();tab.report_name='old.xlsx';tab.parsed(parse_report(fixture([['OLD','Picked','SPX Express','Hà Nội']]),'old.xlsx','intra'))
+            previous=tab.loaded_scope;tab.carrier.setCurrentIndex(tab.carrier.findData('aha'));tab.select_cot('2')
+            calls=[];tab.request=lambda msg,cb:calls.append(msg);tab.select_status(3)
+            body=calls[0]['body'];self.assertEqual(body['beg_ctime'],int(previous[2].timestamp()));self.assertEqual(body['channel_id_list'],previous[1]['channels'])
+            self.assertIn('Area',tab.loading_stage.text());tab.got_area({'total':1,'list':[{'order_number':'OLD','pre_hit_zone_list':['A1']}]})
+            self.assertEqual(tab.orders[0]['area'],'A1');self.assertFalse(tab.spinner.timer.isActive())
+        finally:tab.close();tab.deleteLater()
+
 if __name__=='__main__':unittest.main()

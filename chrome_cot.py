@@ -16,7 +16,7 @@ from PySide6.QtCore import QObject, QThread, Signal, Slot, QTimer, QDate, Qt
 from PySide6.QtWidgets import (QApplication, QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QLabel, QComboBox, QDateEdit, QTableWidget, QTableWidgetItem, QAbstractItemView, QHeaderView, QDialog, QDialogButtonBox, QTimeEdit, QLineEdit, QTextEdit, QMessageBox, QGridLayout, QFrame, QProgressBar, QSizePolicy, QFileDialog)
 from playwright.sync_api import sync_playwright
 from cot_logic import DEFAULT_CONFIG, time_range, export_body, choose_job, parse_report, status_name, progress, URL_EXPORT_LIST, URL_EXPORT, URL_ORDER
-from cot_widgets import CopyTable, SlidingOrders
+from cot_widgets import CopyTable, SlidingOrders, LoadingSpinner
 import base64
 import copy
 from collections import Counter
@@ -266,6 +266,7 @@ class ChromeCotTab(QWidget):
         self.orders=[]; self.selected=set(); self.area_loaded=set()
         self.active_status=None; self.active_area=None; self.active_wave=None; self.picked_baskets_only=False
         self.report_bytes=None; self.saved_report_name=None
+        self.loaded_scope=None; self.loading_dataset=False; self.refresh_failed=False
         self.pending={}; self.counter=0; self.busy=False; self.parser=None
         self.bridge.completed.connect(self.completed)
         self.bridge.sessionChanged.connect(lambda _,text: self.message.setText(text))
@@ -285,9 +286,18 @@ class ChromeCotTab(QWidget):
         self.carrier=QComboBox()
         for k,c in self.config.items(): self.carrier.addItem(c['name'],k)
         self.date=QDateEdit(QDate.currentDate()); self.date.setCalendarPopup(True); self.date.setDisplayFormat('dd/MM/yyyy')
-        self.load=QPushButton('Tải dữ liệu'); self.load.clicked.connect(self.fetch_dataset)
+        self.load=QPushButton('⬇ Tải dữ liệu'); self.load.clicked.connect(self.fetch_dataset)
+        self.load.setProperty('preserveThemeColors',True)
+        self.load.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.load.setStyleSheet('QPushButton {background:qlineargradient(x1:0,y1:0,x2:1,y2:1,stop:0 #ffbf42,stop:1 #ff971b); color:#332000; border:2px solid #ffd979; border-radius:8px; padding:5px 12px; font-weight:800;} QPushButton:hover {background:#ffd16a; border-color:#fff0b6;} QPushButton:pressed {background:#f39b20;} QPushButton:disabled {background:#bca77a; color:#463b29; border-color:#cabb99;}')
+        self.loading_indicator=QWidget(); indicator=QHBoxLayout(self.loading_indicator)
+        indicator.setContentsMargins(0,0,0,0); indicator.setSpacing(4)
+        self.spinner=LoadingSpinner(); indicator.addWidget(self.spinner)
+        self.loading_stage=QLabel(); self.loading_stage.setFixedWidth(100); self.loading_stage.setWordWrap(True)
+        self.loading_stage.setStyleSheet('font-size:11px; color:#89b4fa; font-weight:600;')
+        indicator.addWidget(self.loading_stage); self.loading_indicator.hide()
         self.settings=QPushButton('Khung giờ'); self.settings.clicked.connect(self.open_settings)
-        for w in (QLabel('Nhóm'),self.carrier,QLabel('Ngày'),self.date,self.load,self.settings): top.addWidget(w)
+        for w in (QLabel('Nhóm'),self.carrier,QLabel('Ngày'),self.date,self.load,self.loading_indicator,self.settings): top.addWidget(w)
         top.addStretch()
         self.cot_row=QGridLayout(); left.addLayout(self.cot_row); self.cot_buttons=[]; self.cot_id=None
         self.range_label=QLabel(); self.range_label.setWordWrap(True); left.addWidget(self.range_label)
@@ -331,6 +341,9 @@ class ChromeCotTab(QWidget):
         self.search.setStyleSheet('QLineEdit {background:#151e34; color:#ffffff; border:1px solid #5c8cde; border-radius:7px; padding:4px 8px;} QLineEdit:focus {border:2px solid #85baff; background:#1b2944;}')
         self.search.textChanged.connect(self.search_changed); filters.addWidget(self.search,1)
         self.area.currentIndexChanged.connect(self.filter_changed); self.wave.currentIndexChanged.connect(self.filter_changed)
+        self.dataset_note=QLabel(); self.dataset_note.setWordWrap(True); self.dataset_note.hide()
+        self.dataset_note.setStyleSheet('color:#f9e2af; font-size:11px; padding:2px;')
+        lower.addWidget(self.dataset_note)
         self.area_summary=QLabel(); self.area_summary.setWordWrap(True)
         self.area_summary.setStyleSheet('color:#a4e7ff; background:#202d42; border:1px solid #3d597c; border-radius:7px; padding:4px; font-weight:700;')
         self.area_summary.setToolTip('Đếm đơn theo trạng thái và bộ lọc mã rổ đang chọn, trước lọc khu/Wave/tìm kiếm. Một đơn có nhiều khu được tính một lần ở mỗi khu; tổng các khu có thể lớn hơn số đơn.')
@@ -388,12 +401,30 @@ class ChromeCotTab(QWidget):
         for cid,b in self.cot_buttons: b.setChecked(cid==self.cot_id)
         _,c,beg,end=self.current_range()
         self.range_label.setText(f"{c['name']} · Create Time · {beg:%d/%m/%Y %H:%M} → {end:%d/%m/%Y %H:%M}")
-        self.orders=[]; self.selected.clear(); self.area_loaded.clear(); self.active_status=None; self.active_area=self.active_wave=None; self.picked_baskets_only=False
-        self.search.blockSignals(True); self.search.clear(); self.search.blockSignals(False)
-        self.render_all(); self.message.setText('Chọn COT và bấm Tải dữ liệu. Chưa gọi WMS.')
+        self.update_dataset_note()
+        if self.loaded_scope is None and not self.orders:self.render_all()
+        self.message.setText('Chọn COT và bấm Tải dữ liệu. Chưa gọi WMS.')
+
+    def update_dataset_note(self):
+        if self.loaded_scope is None:
+            self.dataset_note.hide(); return
+        _,c,beg,end=self.loaded_scope
+        stale=self.loading_dataset or self.refresh_failed or self.loaded_scope!=self.current_range()
+        prefix='Đang hiển thị dữ liệu lần tải trước' if stale else 'Dữ liệu đang hiển thị'
+        self.dataset_note.setText(f"{prefix} · {c['name']} · {beg:%d/%m/%Y %H:%M} → {end:%d/%m/%Y %H:%M}")
+        self.dataset_note.show()
+
+    def set_stage(self,text):
+        self.loading_stage.setText(text)
+        self.loading_indicator.setToolTip(text)
 
     def set_busy(self,busy):
         self.busy=busy
+        self.spinner.set_running(busy); self.loading_indicator.setVisible(busy)
+        self.load.setText('Đang tải…' if busy else '⬇ Tải dữ liệu')
+        if not busy:
+            self.loading_dataset=False; self.set_stage('')
+        self.update_dataset_note()
         for w in [self.load,self.carrier,self.date,self.settings,self.basket_filter,*[b for _,b in self.cot_buttons]]: w.setEnabled(not busy)
         for i in range(self.status_row.count()):
             w=self.status_row.itemAt(i).widget()
@@ -414,14 +445,17 @@ class ChromeCotTab(QWidget):
             except Exception as exc: self.fail(str(exc))
 
     def fail(self,text):
+        self.refresh_failed=self.refresh_failed or self.loading_dataset
         self.message.setText('Lỗi: '+text); self.set_busy(False)
 
     def fetch_dataset(self):
         if self.busy: return
         if not self.bridge.connected:
             self.message.setText('Bấm Đăng nhập WMS, đăng nhập và chọn kho trong Chrome trước.'); return
-        self.scope_changed(); self.set_busy(True); self.message.setText('Đang tạo Export WMS…')
-        self.scope=self.current_range(); self.poll_count=0
+        self.scope=copy.deepcopy(self.current_range()); self.poll_count=0
+        self.loading_dataset=True; self.refresh_failed=False
+        self.set_busy(True); self.set_stage('Đang yêu cầu báo cáo…')
+        self.message.setText('Đang tạo Export WMS…')
         self.request(dict(type='WMS_GET',url=URL_EXPORT_LIST),self.got_old_jobs)
 
     def got_old_jobs(self,data):
@@ -430,6 +464,7 @@ class ChromeCotTab(QWidget):
         self.request(dict(type='WMS_POST',url=URL_EXPORT,body=export_body(self.scope[2],self.scope[3],self.scope[1]["channels"])),self.created)
 
     def created(self,data):
+        self.set_stage('Đang chờ WMS…')
         self.task_id=(data or {}).get('task_id') or (data or {}).get('export_task_id')
         self.poll_export()
 
@@ -443,12 +478,14 @@ class ChromeCotTab(QWidget):
         if job:
             self.message.setText(f"Đang tạo Excel… {job.get('processed_percentage',0)}% · {job.get('task_id')}")
             if int(job.get('task_status') or 0)==2 and job.get('download_link'):
+                self.set_stage('Đang tải file…')
                 self.report_name=str(job.get('export_file_name') or 'report.xlsx')
                 self.message.setText('Export xong · đang tải '+self.report_name)
                 self.request(dict(type='WMS_DOWNLOAD',url=job['download_link']),self.got_bytes); return
         QTimer.singleShot(3000,self.poll_export)
 
     def got_bytes(self,data):
+        self.set_stage('Đang đọc dữ liệu…')
         self.message.setText('Đang đọc Excel và gom theo OBVN…')
         self.report_bytes=base64.b64decode(data,validate=True)
         self.saved_report_name=self.report_name
@@ -457,7 +494,13 @@ class ChromeCotTab(QWidget):
         self.parser.ready.connect(self.parsed); self.parser.failed.connect(self.fail); self.parser.start()
 
     def parsed(self,data):
-        self.orders=data['orders']; self.render_all(); self.set_busy(False)
+        # Commit a complete parsed dataset at once. Until here the old UI stays intact.
+        orders=data['orders']
+        self.orders=orders; self.loaded_scope=copy.deepcopy(self.scope); self.refresh_failed=False
+        self.selected.clear(); self.area_loaded.clear(); self.active_status=None
+        self.active_area=self.active_wave=None; self.picked_baskets_only=False
+        self.search.blockSignals(True); self.search.clear(); self.search.blockSignals(False)
+        self.render_all(); self.set_busy(False)
         self.message.setText(f"✓ {self.report_name} · {data.get('reportFiles',1)} file / {data.get('reportSheets',1)} sheet · {data['rawRows']} dòng · lọc {data['filteredRows']} dòng · {len(self.orders)} đơn hợp lệ (đã loại Cancel)")
 
     def status_orders(self):
@@ -537,8 +580,8 @@ class ChromeCotTab(QWidget):
         if self.busy: return
         self.active_status=code; self.active_area=self.active_wave=None; self.picked_baskets_only=False; self.render_all()
         if code is not None and str(code) not in self.area_loaded and any(o['area']=='-' for o in self.status_orders()):
-            self.set_busy(True); self.area_map={}; self.area_page=1; self.area_code=code
-            _,c,beg,end=self.current_range()
+            self.set_busy(True); self.set_stage('Đang nạp Area…'); self.area_map={}; self.area_page=1; self.area_code=code
+            _,c,beg,end=self.loaded_scope or self.current_range()
             self.area_body=dict(order_status_list=str(code),beg_ctime=int(beg.timestamp()),end_ctime=int(end.timestamp()),pageno=1,count=200,is_get_total=1)
             if c['channels']: self.area_body['channel_id_list']=c['channels']
             self.message.setText('Đang nạp Area · '+status_name(code)); self.fetch_area_page()

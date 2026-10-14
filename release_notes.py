@@ -2,16 +2,13 @@
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QDialog, QVBoxLayout, QTextBrowser, QPushButton, QMessageBox
 
-VERSION='3.3'
-TITLE='IntraCity 3.3'
-NOTES='''<h2>Có gì mới trong IntraCity 3.3?</h2>
+VERSION='3.3.1'
+TITLE='IntraCity 3.3.1'
+NOTES='''<h2>Có gì mới trong IntraCity 3.3.1?</h2>
 <ul>
-<li><b>Bảng đơn rộng hơn:</b> phần thống kê, COT và trạng thái được thu gọn. Kéo thanh phía trên bảng đơn lên để che dần phần thống kê, kéo xuống để hiện lại. Phần trên không co giãn khi kéo.</li>
-<li><b>Thu gọn nhanh:</b> nút Thu gọn / Mở thống kê và ghi nhớ vị trí kéo cho lần mở sau.</li>
-<li><b>Chọn và copy dễ hơn:</b> chọn ô hoặc bấm tiêu đề để chọn cả cột, kể cả Picking ID. Vùng chọn sáng vàng; nhấn Ctrl+C để sao chép. Hỗ trợ cả sáng và tối.</li>
-<li><b>Picked có mã rổ:</b> mã rổ chỉ hiển thị cho đơn đang Picked; bỏ số tổng trên nút này. Các ô tổng đơn và tỷ lệ phía trên vẫn giữ.</li>
-<li><b>Lưu report gốc:</b> lưu Excel/ZIP vừa tải mà không gọi lại API hay tạo Export mới. File gốc có thể chứa những đơn đã bị app lọc bỏ.</li>
-<li><b>Đọc đủ report chia nhỏ:</b> đọc các file Excel trong ZIP và các sheet dữ liệu đơn, gộp trùng OBVN và gom SKU/Picking ID/mã rổ. Nếu có phần report lỗi, thông báo rõ thay vì trả kết quả thiếu.</li>
+<li><b>Giữ dữ liệu cũ khi tải:</b> bảng đơn, tổng đơn, trạng thái và tỷ lệ vẫn giữ cho đến khi tải và đọc dữ liệu mới thành công. Nếu lỗi, dữ liệu cũ vẫn còn. Có ghi rõ khung giờ của dữ liệu đang hiển thị.</li>
+<li><b>Biết app đang làm gì:</b> vòng xoay xanh nhỏ cạnh nút tải, kèm bước đang yêu cầu báo cáo, chờ WMS, tải file hoặc đọc dữ liệu. Hình động chạy tại máy, không gọi thêm API.</li>
+<li><b>Nút tải nổi bật:</b> nền cam vàng, chữ đậm, sáng khi rê chuột. Khi đang tải, nút đổi thành “Đang tải…” và khóa bấm để tránh gọi trùng.</li>
 </ul>
 <p>Giữ nguyên khung giờ COT, điều kiện lọc đơn, loại Cancel và cách tính tổng/tỷ lệ Outbound.</p>
 <p>Thông báo hiện khi mở phiên bản mới lần đầu. Bấm Đã hiểu để không hiện lại; dùng Xem thay đổi để mở lại khi cần.</p>'''
