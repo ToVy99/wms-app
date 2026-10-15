@@ -72,6 +72,37 @@ FETCH_JS = r'''async ({url, method, body, binary}) => {
 }'''
 
 
+# SKU uses the supplied extension's response/auth rules and has no 25s timer.
+SKU_FETCH_JS = r'''async ({url,body}) => {
+const ALLOWED_PREFIX = 'https://wms.ssc.shopee.vn/api/';
+async function wmsPost(url, body) {
+  if (typeof url !== 'string' || !url.startsWith(ALLOWED_PREFIX)) {
+    throw new Error('URL không được phép');
+  }
+  const resp = await fetch(url, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json;charset=UTF-8',
+      'X-CCTV-Tenant-Id': 'WMS'
+    },
+    credentials: 'include',
+    body: JSON.stringify(body)
+  });
+  if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+
+  let res;
+  try { res = await resp.json(); }
+  catch { const e = new Error('Phản hồi không hợp lệ (có thể chưa đăng nhập WMS)'); e.auth = true; throw e; }
+
+  if (res && res.retcode === 0 && res.data) return res.data;
+  if (res && res.retcode === 10001) { const e = new Error('Chưa đăng nhập WMS!'); e.auth = true; throw e; }
+  throw new Error(res?.message || 'Lỗi lấy dữ liệu');
+}
+
+try {return {success:true,data:await wmsPost(url,body)}} catch(e) {return {success:false,error:e.message,auth:!!e.auth}}
+}'''
+
+
 class ChromeWorker(QThread):
     result = Signal(str, str)
     state = Signal(bool, str)
@@ -128,7 +159,11 @@ class ChromeWorker(QThread):
                             if any(x in urlsplit(target.url).path.lower().split('/') for x in ('login','signin','sso','auth')):
                                 raise RuntimeError('Hãy đăng nhập và chọn kho trong Chrome trước khi tải COT.')
                             self.network_requests += 1
-                            response = target.evaluate(FETCH_JS, {
+                            sku_search = request_id.startswith('sku-') and msg['type']=='WMS_POST' and urlsplit(msg['url']).path in {
+                                '/api/v2/apps/process/outbound/salesorder/search_order',
+                                '/api/v2/apps/process/taskcenter/pickingtask/search_sales_sub_picking_task',
+                            }
+                            response = target.evaluate(SKU_FETCH_JS if sku_search else FETCH_JS, {
                                 'url': msg['url'],
                                 'method': 'POST' if msg['type'] == 'WMS_POST' else 'GET',
                                 'body': msg.get('body'), 'binary': msg['type'] == 'WMS_DOWNLOAD',

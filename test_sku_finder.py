@@ -44,12 +44,44 @@ class FinderTests(unittest.TestCase):
         self.search.start('A');self.send();self.search.cancel();self.search.start('B');self.assertEqual(len(self.bridge.calls),1)
         self.bridge.reply({'total':40,'list':[]});self.assertFalse(self.search.busy);self.assertFalse(self.search.timer.isActive());self.assertFalse(self.results)
         self.search.start('B');self.send();self.bridge.reply({'total':0,'list':[]});self.assertEqual(self.results[0]['upc'],'B')
-    def test_errors_stop_without_retries_or_replacing_result(self):
-        for error in ['HTTP 429','Chưa đăng nhập WMS','WMS phản hồi quá lâu']:
-            self.search.start('A');self.send();count=len(self.bridge.calls);self.bridge.reply(error=error)
-            self.assertFalse(self.search.busy);self.assertFalse(self.search.timer.isActive());self.assertEqual(len(self.bridge.calls),count)
-        self.assertFalse(self.results);self.assertEqual(len(self.errors),3)
-        self.search.start('A');self.send();self.bridge.reply({'bad':'format'});self.assertEqual(len(self.errors),4)
+    def test_transient_error_retries_twice_then_fails_stage_one(self):
+        self.search.start('A');self.send()
+        first=self.bridge.calls[-1][1]
+        for attempt in range(3):
+            self.bridge.reply(error='HTTP 503')
+            if attempt<2:
+                self.assertEqual(self.search.timer.interval(),200*(attempt+1));self.send()
+                self.assertEqual(self.bridge.calls[-1][1],first)
+        self.assertEqual(len(self.bridge.calls),3);self.assertFalse(self.search.busy)
+        self.assertEqual(self.errors,['HTTP 503']);self.assertFalse(self.results)
+    def test_missing_null_lists_and_partial_task_errors(self):
+        self.search.start('A');self.send()
+        self.bridge.reply({'total':3,'list':[{'order_number':str(i),'shopee_order_sn':'SN'+str(i)} for i in range(3)]})
+        self.send();self.bridge.reply({'total':0,'list':None})
+        self.send();self.bridge.reply({'total':21,'list':[{'sub_pickup_id':'DISCARD'}]})
+        self.send()
+        for attempt in range(3):
+            self.bridge.reply(error='HTTP 500')
+            self.send()
+        self.assertEqual(self.bridge.calls[-1][1]['body']['search_key_two'],'SN2')
+        self.bridge.reply({'total':1,'list':[{'sub_pickup_id':'KEEP'}]})
+        result=self.results[-1];self.assertEqual(result['failed'],['SN1'])
+        self.assertEqual(result['not_found'],['SN0']);self.assertEqual(list(result['tasks']),['KEEP'])
+        self.assertFalse(self.errors)
+        self.search.start('B');self.send();self.bridge.reply({'total':0})
+        self.assertEqual(self.results[-1]['orders'],0)
+    def test_auth_stops_immediately_and_retry_can_be_cancelled(self):
+        self.search.start('A');self.send();rid=self.bridge.calls[-1][0]
+        self.bridge.completed.emit(rid,json.dumps({'success':False,'auth':True,'error':'Chưa đăng nhập WMS!'}))
+        self.assertEqual(len(self.bridge.calls),1);self.assertFalse(self.search.busy);self.assertEqual(len(self.errors),1)
+        self.search.start('A');self.send();self.bridge.reply(error='HTTP 503')
+        self.assertTrue(self.search.timer.isActive());self.search.cancel();self.send()
+        self.assertFalse(self.search.busy);self.assertFalse(self.search.timer.isActive());self.assertEqual(len(self.bridge.calls),2)
+    def test_recovered_request_and_empty_task_list(self):
+        self.search.start('A');self.send();self.bridge.reply(error='HTTP 502');self.send()
+        self.bridge.reply({'total':1,'list':[{'order_number':'O','shopee_order_sn':'S'}]})
+        self.send();self.bridge.reply({'total':0})
+        self.assertFalse(self.errors);self.assertEqual(self.results[-1]['not_found'],['S'])
     def test_limits_and_no_task(self):
         self.search.start('A');self.send();self.bridge.reply({'total':2001,'list':[]});self.assertIn('2000',self.errors[-1]);self.assertFalse(self.search.busy)
         self.search.start('A');self.send();self.bridge.reply({'total':1,'list':[{'order_number':'OB','shopee_order_sn':'SN'}]})

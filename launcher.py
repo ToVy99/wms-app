@@ -5,7 +5,7 @@ import time
 from pathlib import Path
 from PySide6.QtGui import QIcon
 import intra_2_3_COT_Dashboard_loginfix as intra
-from chrome_cot import FETCH_JS
+from chrome_cot import FETCH_JS, SKU_FETCH_JS
 
 
 def apply_app_icon(app, window):
@@ -79,6 +79,9 @@ def main():
                     assert 'fixture_session=fixture-only' in seen[0].get('cookie','')
                     assert seen[0].get('x-cctv-tenant-id')=='WMS'
                     assert browser.is_connected()
+                    sku_response=page.evaluate(SKU_FETCH_JS,{'url':'https://wms.ssc.shopee.vn/api/v2/apps/process/taskcenter/pickingtask/search_sales_sub_picking_task','body':{'search_key_two':'FIXTURE'}})
+                    assert sku_response=={'success':True,'data':{'total':2112}}
+                    assert len(seen)==2
                     browser.close()
                 window.set_banner_status(False,custom_msg='Chrome transport + native COT verified')
                 finish({'passed':True,'tabs':2,'logic_version':'1.4','native_ui':True,'startup_wms_requests':0,

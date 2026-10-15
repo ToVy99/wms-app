@@ -1,7 +1,7 @@
 """Native UI for the supplied WMS SKU -> Picking Task extension.
 
 Uses the existing signed-in Chrome bridge. Searches are user initiated,
-serial, and never automatically retried. No separate browser or credentials.
+serial, with the original extension's bounded retries and partial results. No separate browser or credentials.
 """
 import json
 import math
@@ -46,9 +46,9 @@ class TaskSearch(QObject):
         upc=''.join(upc.split())
         if not upc:self.failed.emit('Nhập hoặc quét mã SKU/UPC trước.');return
         if not self.bridge.connected:self.failed.emit('Bấm Đăng nhập WMS và chọn kho trong Chrome trước.');return
-        self.upc=upc;self.orders={};self.tasks={};self.sns=[];self.not_found=[];self.truncated=[]
+        self.upc=upc;self.orders={};self.tasks={};self.sns=[];self.not_found=[];self.truncated=[];self.failed_sns=[];self.task_buffer=[];self.stage=1
         self.order_page=1;self.sn_index=0;self.task_page=1;self.sn_found=False
-        self.win=time_window();self.cancelled=False;self.busy=True;self.busyChanged.emit(True)
+        self.cancelled=False;self.busy=True;self.busyChanged.emit(True)
         self._orders()
     def cancel(self):
         if not self.busy:return
@@ -60,27 +60,45 @@ class TaskSearch(QObject):
     def _finish(self):
         self.timer.stop();self.next_request=None;self.busy=False;self.busyChanged.emit(False)
     def _request(self,url,body,callback):
+        self.attempt=0
         self.next_request=(url,body,callback)
         # A single request in flight, with a pause between pages/SNs.
         self.timer.start(0 if self.counter==0 else 300)
     def _send(self):
         if not self.busy or self.cancelled or self.next_request is None:return
         url,body,callback=self.next_request;self.next_request=None
-        self.counter+=1;rid=self.prefix+str(self.counter);self.pending=(rid,callback)
+        self.counter+=1;rid=self.prefix+str(self.counter);self.pending=(rid,callback,url,body)
         self.bridge.request(rid,json.dumps({'type':'WMS_POST','url':url,'body':body}))
     def _reply(self,rid,raw):
         if not self.pending or rid!=self.pending[0]:return
-        callback=self.pending[1];self.pending=None
+        _,callback,url,body=self.pending;self.pending=None
         if self.cancelled:self._stop_cancelled();return
         try:
             result=json.loads(raw)
-            if not result.get('success'):raise ValueError(result.get('error') or 'Lỗi WMS')
+            if not result.get('success'):
+                message=result.get('error') or 'Lỗi WMS'
+                if result.get('auth'):
+                    self._finish();self.failed.emit(message);return
+                if self.attempt<2:
+                    self.attempt+=1
+                    self.next_request=(url,body,callback)
+                    self.progress.emit(f'{self.upc} · {message} · Thử lại {self.attempt}/2…')
+                    self.timer.start(200*self.attempt);return
+                self._request_failed(message);return
             data=result.get('data')
-            if not isinstance(data,dict) or not isinstance(data.get('list'),list):
-                raise ValueError('WMS trả dữ liệu không đúng định dạng; chưa thay kết quả cũ.')
-            callback(data)
+            if not isinstance(data,dict):raise ValueError('WMS trả dữ liệu không đúng định dạng.')
+            # The extension treats omitted/null list as an empty result.
+            rows=data.get('list') or []
+            if not isinstance(rows,list):raise ValueError('WMS trả danh sách không đúng định dạng.')
+            callback({**data,'list':rows})
         except Exception as exc:
-            self._finish();self.failed.emit(str(exc))
+            self._request_failed(str(exc))
+    def _request_failed(self,message):
+        if self.stage==2:
+            self.failed_sns.append(self.sns[self.sn_index])
+            self._next_sn()
+        else:
+            self._finish();self.failed.emit(message)
     def _orders(self):
         self.progress.emit(f'{self.upc} · Đang tìm đơn Picked · trang {self.order_page}…')
         self._request(URL_ORDER,{'sku_upc_code':self.upc,'order_status_list':'3',
@@ -90,8 +108,8 @@ class TaskSearch(QObject):
             self.total=int(data.get('total') or 0);self.order_pages=max(1,math.ceil(self.total/PAGE_SIZE))
             if self.order_pages>MAX_ORDER_PAGES:raise ValueError(f'Quá nhiều đơn ({self.total}), vượt giới hạn {MAX_ORDER_PAGES*PAGE_SIZE} của tiện ích.')
         for order in data['list']:
-            if not isinstance(order,dict) or not order.get('order_number'):raise ValueError('Đơn WMS thiếu mã order_number.')
-            self.orders[str(order['order_number'])]=order
+            if not isinstance(order,dict):raise ValueError('Đơn WMS không đúng định dạng.')
+            self.orders[order.get('order_number')]=order
         if self.order_page<self.order_pages:
             self.order_page+=1;self._orders();return
         sns={}
@@ -101,6 +119,7 @@ class TaskSearch(QObject):
                 if sn and str(sn).strip():sns[str(sn).strip()]=None
         self.sns=list(sns)
         if not self.sns:self._done();return
+        self.stage=2;self.win=time_window()
         self._task()
     def _task(self):
         self.progress.emit(f'{self.upc} · Tra Picking Task · {self.sn_index}/{len(self.sns)} SN · trang {self.task_page}…')
@@ -108,22 +127,26 @@ class TaskSearch(QObject):
             'fulfillment_chain_dest_zone_list':[],'pageno':self.task_page,'count':PAGE_SIZE},self._got_tasks)
     def _got_tasks(self,data):
         sn=self.sns[self.sn_index]
+        # Like tasksForSn(), publish this SN only after all its pages succeed.
         for task in data['list']:
-            if not isinstance(task,dict) or not task.get('sub_pickup_id'):raise ValueError('Task WMS thiếu sub_pickup_id.')
-            key=str(task['sub_pickup_id'])
-            entry=self.tasks.setdefault(key,{'task':task,'sns':set()});entry['sns'].add(sn)
-            self.sn_found=True
+            if not isinstance(task,dict):raise ValueError('Task WMS không đúng định dạng.')
+            self.task_buffer.append(task)
         more=self.task_page*PAGE_SIZE<int(data.get('total') or 0)
         if more and self.task_page<MAX_TASK_PAGES:
             self.task_page+=1;self._task();return
         if more:self.truncated.append(sn)
-        if not self.sn_found:self.not_found.append(sn)
-        self.sn_index+=1;self.task_page=1;self.sn_found=False
+        if not self.task_buffer:self.not_found.append(sn)
+        for task in self.task_buffer:
+            key=str(task.get('sub_pickup_id',''))
+            entry=self.tasks.setdefault(key,{'task':task,'sns':set()});entry['sns'].add(sn)
+        self._next_sn()
+    def _next_sn(self):
+        self.sn_index+=1;self.task_page=1;self.task_buffer=[]
         if self.sn_index<len(self.sns):self._task()
         else:self._done()
     def _done(self):
         result={'upc':self.upc,'total_api':self.total,'orders':len(self.orders),
-            'sns':self.sns,'tasks':self.tasks,'not_found':self.not_found,'truncated':self.truncated}
+            'sns':self.sns,'tasks':self.tasks,'not_found':self.not_found,'truncated':self.truncated,'failed':self.failed_sns}
         self._finish();self.completed.emit(result)
 
 class SkuTaskDialog(QDialog):
@@ -167,7 +190,7 @@ class SkuTaskDialog(QDialog):
         for row,(_,entry) in enumerate(entries):
             task=entry['task'];codes=device_codes(task);self.baskets.extend(codes)
             structure=' / '.join(STRUCT.get(int(v),f'?{v}') if str(v).isdigit() else f'?{v}' for v in (task.get('order_structure_list') or [])) or '-'
-            values=[task['sub_pickup_id'],structure,', '.join(codes) or '-',task.get('sku_qty','-'),task.get('sku_item_qty','-'),len(entry['sns'])]
+            values=[task.get('sub_pickup_id',''),structure,', '.join(codes) or '-',task.get('sku_qty','-'),task.get('sku_item_qty','-'),len(entry['sns'])]
             for col,value in enumerate(values):
                 item=QTableWidgetItem(str(value));item.setToolTip(str(value));self.table.setItem(row,col,item)
             button=QPushButton('Copy');button.setEnabled(bool(codes));button.clicked.connect(lambda _,v=codes:self.copy(v));self.table.setCellWidget(row,6,button)
@@ -176,6 +199,7 @@ class SkuTaskDialog(QDialog):
         warnings=[]
         if result['orders']!=result['total_api']:warnings.append(f"Lấy {result['orders']}/{result['total_api']} đơn")
         if result['not_found']:warnings.append(f"{len(result['not_found'])} SN không có task")
+        if result.get('failed'):warnings.append(f"{len(result['failed'])} SN lỗi gọi API (tìm lại để thử lại)")
         if result['truncated']:warnings.append(f"{len(result['truncated'])} SN vượt giới hạn 100 task; kết quả chưa đầy đủ")
         self.status.setText(' · '.join(warnings) if warnings else ('Không có đơn Picked khớp mã.' if not result['sns'] else 'Đã tìm xong. Chọn ô/cột rồi Ctrl+C để sao chép.'))
     def closeEvent(self,event):

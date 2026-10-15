@@ -13,7 +13,7 @@ class ThemeTests(unittest.TestCase):
     def setUpClass(cls):cls.app=QApplication.instance() or QApplication([])
     def setUp(self):
         self.saved=[]
-        self.patches=[patch.object(intra,'load_config',return_value={'appearance':'dark','seen_release':'3.4'}),patch.object(intra,'save_config',side_effect=lambda c:self.saved.append(dict(c)) or True),patch.object(intra.WMSDashboard,'start_folder_watcher'),patch.object(intra.WMSDashboard,'check_for_updates')]
+        self.patches=[patch.object(intra,'load_config',return_value={'appearance':'dark','seen_release':'3.4.1'}),patch.object(intra,'save_config',side_effect=lambda c:self.saved.append(dict(c)) or True),patch.object(intra.WMSDashboard,'start_folder_watcher'),patch.object(intra.WMSDashboard,'check_for_updates')]
         for p in self.patches:p.start()
         self.window=intra.WMSDashboard()
         self.tab=self.window.cotTab
@@ -47,13 +47,13 @@ class ThemeTests(unittest.TestCase):
         self.window.set_banner_status(False,True,'Đã tải')
         self.assertIn('#dcfce7',self.window.statusBanner.styleSheet())
         self.choose('dark');self.assertIn('#2e3c38',self.window.statusBanner.styleSheet())
-        self.assertEqual(self.window.windowTitle(),'IntraCity 3.4')
+        self.assertEqual(self.window.windowTitle(),'IntraCity 3.4.1')
         self.assertEqual(self.calls,[])
 
     def test_update_notice_once_per_version_while_app_remains_open(self):
         with patch.object(intra.QMessageBox,'question',return_value=intra.QMessageBox.No) as question:
-            self.window.prompt_update({'version':'3.4','download_url':'https://example.com/app.exe'})
-            self.window.prompt_update({'version':'3.4'})
+            self.window.prompt_update({'version':'3.4.1','download_url':'https://example.com/app.exe'})
+            self.window.prompt_update({'version':'3.4.1'})
             self.window.prompt_update({'version':'3.5'})
             self.assertEqual(question.call_count,2)
         self.assertTrue(self.window.update_timer.isActive())
