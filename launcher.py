@@ -47,6 +47,14 @@ def main():
                 assert not app.windowIcon().isNull()
                 assert not window.windowIcon().isNull()
                 assert window.mainTabs.count()==2
+                available=window.screen().availableGeometry()
+                assert available.contains(window.frameGeometry())
+                window.open_sku_finder()
+                assert window.sku_dialog.searcher.bridge is window.cotTab.bridge
+                assert not window.sku_dialog.searcher.busy
+                assert window.sku_dialog.searcher.counter==0
+                window.sku_dialog.grab().save('smoke-sku.png')
+                window.sku_dialog.close()
                 assert window.cotTab.bridge.worker is None
                 assert not hasattr(intra,'COTOrderListThread')
                 assert not hasattr(intra,'_wms_post')

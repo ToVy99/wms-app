@@ -1,4 +1,4 @@
-IntraCity 3.3.1 — giao diện cập nhật (mã nội bộ 3.3.1)
+IntraCity 3.4 — giao diện cập nhật (mã nội bộ 3.3.1)
 
 Các thay đổi:
 - Sẵn sàng làm việc nằm cùng hàng Đăng nhập WMS.
@@ -21,7 +21,7 @@ Các thay đổi:
 3. Mở PowerShell trong thư mục này, chạy:
    powershell.exe -NoProfile -ExecutionPolicy Bypass -File ".\build_windows.ps1"
 4. Sau khi build và kiểm tra hoàn tất, file chạy nằm tại:
-   dist\IntraCity 3.3.1.exe
+   dist\IntraCity 3.4.exe
 
 Không chỉ đóng gói một file .py; giữ đầy đủ các file của bộ nguồn này.
 Script dùng py -3.12, tạo .venv-build, cài các thư viện cần thiết,
@@ -93,3 +93,14 @@ CẬP NHẬT 3.3.1:
 - Ghi rõ khung giờ dữ liệu đang hiển thị, kể cả khi chọn COT khác.
 - Vòng xoay xanh và giai đoạn tải cạnh nút Tải dữ liệu; không thêm API.
 - Nút tải nền cam vàng, có hover và khóa khi đang xử lý.
+
+CẬP NHẬT 3.4:
+- Cửa sổ mở vừa vùng màn hình, có thể phóng to. Màn nhỏ có thanh cuộn dự phòng.
+- Nút Tìm Task theo SKU ở góc phải thanh tab, dùng chung phiên Chrome WMS.
+- Nhập/quét SKU/UPC rồi Enter: tìm đơn Picked -> SN -> Picking Task 7 ngày giờ VN.
+- Hiện Task ID, Order Structure, BSK, SKU Qty, Item Qty và số SN khớp.
+- Copy BSK từng task hoặc tất cả không trùng. Chọn ô/cột rồi Ctrl+C.
+- API chạy tuần tự, nghỉ 300ms giữa yêu cầu; không tự thử lại. Nút Dừng ngừng
+  các yêu cầu tiếp theo, yêu cầu đã gửi sẽ chờ phản hồi. Kết quả cũ giữ khi lỗi.
+- Giữ giới hạn của tiện ích: 2000 đơn, tối đa 100 task/SN; hiện cảnh báo nếu thiếu.
+- Không áp dụng bộ lọc COT vào tìm SKU; tra kho đang chọn trong Chrome như tiện ích.

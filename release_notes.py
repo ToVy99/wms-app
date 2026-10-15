@@ -2,16 +2,17 @@
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QDialog, QVBoxLayout, QTextBrowser, QPushButton, QMessageBox
 
-VERSION='3.3.1'
-TITLE='IntraCity 3.3.1'
-NOTES='''<h2>Có gì mới trong IntraCity 3.3.1?</h2>
+VERSION='3.4'
+TITLE='IntraCity 3.4'
+NOTES='''<h2>Có gì mới trong IntraCity 3.4?</h2>
 <ul>
-<li><b>Giữ dữ liệu cũ khi tải:</b> bảng đơn, tổng đơn, trạng thái và tỷ lệ vẫn giữ cho đến khi tải và đọc dữ liệu mới thành công. Nếu lỗi, dữ liệu cũ vẫn còn. Có ghi rõ khung giờ của dữ liệu đang hiển thị.</li>
-<li><b>Biết app đang làm gì:</b> vòng xoay xanh nhỏ cạnh nút tải, kèm bước đang yêu cầu báo cáo, chờ WMS, tải file hoặc đọc dữ liệu. Hình động chạy tại máy, không gọi thêm API.</li>
-<li><b>Nút tải nổi bật:</b> nền cam vàng, chữ đậm, sáng khi rê chuột. Khi đang tải, nút đổi thành “Đang tải…” và khóa bấm để tránh gọi trùng.</li>
+<li><b>Vừa màn hình laptop:</b> cửa sổ mở gọn theo vùng màn hình làm việc, không che góc phải hoặc góc dưới. Có thể phóng to khi cần; màn hình nhỏ có thanh cuộn để tới đầy đủ các mục.</li>
+<li><b>Tìm Task theo SKU:</b> nút ở góc phải thanh tab. Quét hoặc nhập SKU/UPC, bấm Enter để tìm đơn Picked và Picking Task trong 7 ngày gần nhất theo giờ Việt Nam.</li>
+<li><b>Copy mã rổ:</b> xem Task ID, Order Structure, Device ID/BSK, SKU Qty, Item Qty và số SN khớp. Copy từng task hoặc toàn bộ BSK không trùng.</li>
+<li><b>Giao diện đồng bộ:</b> công cụ mới theo chế độ sáng/tối. Chỉ gọi WMS khi tìm, từng yêu cầu lần lượt; có nút Dừng, không tự thử lại khi lỗi.</li>
 </ul>
-<p>Giữ nguyên khung giờ COT, điều kiện lọc đơn, loại Cancel và cách tính tổng/tỷ lệ Outbound.</p>
-<p>Thông báo hiện khi mở phiên bản mới lần đầu. Bấm Đã hiểu để không hiện lại; dùng Xem thay đổi để mở lại khi cần.</p>'''
+<p>Giữ nguyên mọi điều kiện hiện tại.</p>
+<p>Thông báo hiện khi mở phiên bản mới lần đầu. Bấm Đã hiểu để không hiện lại; dùng Xem thay đổi để mở lại khi cần.</p><p>Đỗ Rê Mon♥</p>'''
 
 def show_changes(window,save_config,automatic=False):
     if automatic and window.config.get('seen_release')==VERSION:return

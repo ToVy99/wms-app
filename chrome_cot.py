@@ -26,6 +26,7 @@ API_PATHS = {
     '/api/v2/apps/process/outbound/salesorder/search_order',
     '/api/v2/apps/basic/reportcenter/create_export_task',
     '/api/v2/apps/basic/reportcenter/search_export_task',
+    '/api/v2/apps/process/taskcenter/pickingtask/search_sales_sub_picking_task',
 }
 
 
@@ -39,7 +40,7 @@ def validate_request(msg):
             raise ValueError('Link tải không phải report WMS.')
     elif kind in ('WMS_GET', 'WMS_POST'):
         if parts.path not in API_PATHS:
-            raise ValueError('API không thuộc luồng COT v1.4.')
+            raise ValueError('API không thuộc chức năng WMS của ứng dụng.')
         if kind == 'WMS_POST' and not isinstance(msg.get('body'), dict):
             raise ValueError('Nội dung yêu cầu không hợp lệ.')
     else:
@@ -236,7 +237,7 @@ class MetricCard(QFrame):
 class StatusButton(QPushButton):
     def __init__(self, label, count, parent=None):
         super().__init__(parent)
-        self.setCheckable(True); self.setMinimumHeight(40); self.setMinimumWidth(112)
+        self.setCheckable(True); self.setMinimumHeight(40); self.setMinimumWidth(88)
         self.label=label
         self.setAccessibleName(f'{label} ({count})')
         self.setStyleSheet('QPushButton {background:#292b3f; border:1px solid #484b65; border-radius:8px;} QPushButton:hover {background:#363951;} QPushButton:checked {background:#3b3528; border:2px solid #ff9d37;} QPushButton:disabled {background:#232436;}')
@@ -314,7 +315,7 @@ class ChromeCotTab(QWidget):
         for card in (self.total_card,self.outbound_card,self.percent_card): metrics.addWidget(card,1)
         self.summary=QLabel(); self.summary.setStyleSheet('color:#c4c9df;'); left.addWidget(self.summary)
         left.addStretch()
-        self.status_panel=QFrame(); self.status_panel.setMinimumWidth(486); self.status_panel.setFixedHeight(228)
+        self.status_panel=QFrame(); self.status_panel.setMinimumWidth(390); self.status_panel.setFixedHeight(228)
         self.status_panel.setStyleSheet('QFrame {background:#202132; border:1px solid #393c52; border-radius:10px;}')
         right=QVBoxLayout(self.status_panel); right.setContentsMargins(10,8,10,8); right.setSpacing(6)
         title=QLabel('TRẠNG THÁI · BẤM ĐỂ XEM ĐƠN'); title.setStyleSheet('border:0; color:#c4c9df; font-size:11px; font-weight:700;'); right.addWidget(title)
@@ -330,12 +331,12 @@ class ChromeCotTab(QWidget):
         header.addWidget(self.status_panel,2)
         filters=QHBoxLayout(); lower.addLayout(filters)
         self.area=QComboBox(); self.wave=QComboBox()
-        self.area.setMinimumWidth(165); self.wave.setMinimumWidth(205)
+        self.area.setMinimumWidth(110); self.wave.setMinimumWidth(120)
         filters.addWidget(QLabel('Area')); filters.addWidget(self.area); filters.addWidget(QLabel('Wave Type')); filters.addWidget(self.wave)
         self.basket_filter=QPushButton('Picked có mã rổ'); self.basket_filter.setCheckable(True)
         self.basket_filter.setStyleSheet('QPushButton {font-weight:700;} QPushButton:checked {background:#24483d; border:2px solid #69e6b2; color:#94f7d0;}')
         self.basket_filter.clicked.connect(self.toggle_picked_baskets); filters.addWidget(self.basket_filter)
-        self.search=QLineEdit(); self.search.setClearButtonEnabled(True); self.search.setMinimumWidth(230)
+        self.search=QLineEdit(); self.search.setClearButtonEnabled(True); self.search.setMinimumWidth(120)
         self.search.setPlaceholderText('Tìm đơn · OBVN, SN, Picking ID, mã rổ…')
         self.search.setToolTip('Tìm trong mọi trường của report đã tải. Có thể nhập không dấu; nhiều từ phải cùng khớp trên một đơn. Kết hợp với các bộ lọc đang chọn.')
         self.search.setStyleSheet('QLineEdit {background:#151e34; color:#ffffff; border:1px solid #5c8cde; border-radius:7px; padding:4px 8px;} QLineEdit:focus {border:2px solid #85baff; background:#1b2944;}')

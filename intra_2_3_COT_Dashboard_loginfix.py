@@ -18,7 +18,7 @@ from PySide6.QtWidgets import (
     QApplication, QWidget, QPushButton, QLabel, QListWidget,
     QTableView, QFileDialog, QMessageBox, QVBoxLayout, QHBoxLayout,
     QLineEdit, QHeaderView, QCheckBox, QComboBox, QFrame, QProgressDialog,
-    QTabWidget, QButtonGroup, QDateEdit
+    QTabWidget, QButtonGroup, QDateEdit, QScrollArea, QSizePolicy, QLayout
 )
 
 from PySide6.QtCore import Qt, QThread, Signal, QTimer, QEvent, QAbstractTableModel, QModelIndex, QDate
@@ -227,6 +227,8 @@ QFrame#bottomStatusBar {
 """
 
 from chrome_cot import ChromeCotTab
+from sku_task_finder import SkuTaskDialog
+from window_layout import fit_window, ViewportLayout
 from ui_theme import ThemeController
 
 # ================= TÍNH NĂNG TỰ ĐỘNG CẬP NHẬT =================
@@ -758,12 +760,14 @@ class WMSDashboard(QWidget):
         self.config = load_config()
 
         self.setWindowTitle(TITLE)
-        self.resize(1680, 950)
+        self.sku_dialog=None
         self.setStyleSheet(MODERN_STYLE)
 
         self.table_model = PandasModel()
 
         self.build_ui()
+        fit_window(self)
+        QTimer.singleShot(0,lambda:fit_window(self))
         self.theme_controller=ThemeController(self,save_config)
         self.themeChoice.setCurrentIndex(self.themeChoice.findData(self.theme_controller.mode))
         self.themeChoice.currentIndexChanged.connect(lambda _:self.theme_controller.choose(self.themeChoice.currentData()))
@@ -777,6 +781,14 @@ class WMSDashboard(QWidget):
         self.check_for_updates()
         if '--smoke-test' not in sys.argv:
             QTimer.singleShot(0,lambda:show_changes(self,save_config,automatic=True) if not self._closing else None)
+
+    def open_sku_finder(self):
+        if self.sku_dialog is None:
+            self.sku_dialog=SkuTaskDialog(self.cotTab.bridge,self)
+        self.theme_controller.apply()
+        self.sku_dialog.show();self.sku_dialog.raise_();self.sku_dialog.activateWindow()
+        fit_window(self.sku_dialog,980,620)
+        self.sku_dialog.input.setFocus()
 
     def check_for_updates(self):
         if self._closing:return
@@ -888,8 +900,15 @@ del /F /Q "{backup_exe}" >nul 2>&1
             QMessageBox.warning(self, "Lỗi cập nhật", f"Không thể hoàn tất cập nhật: {str(e)}")
 
     def build_ui(self):
-        root = QVBoxLayout(self)
-        root.setSpacing(10)
+        outer=QVBoxLayout(self);outer.setContentsMargins(0,0,0,0)
+        self.workspace_scroll=QScrollArea();self.workspace_scroll.setWidgetResizable(True)
+        self.workspace_scroll.setFrameShape(QFrame.NoFrame)
+        content=QWidget();self.workspace_scroll.setWidget(content);outer.addWidget(self.workspace_scroll)
+        root = ViewportLayout(content)
+        root.setSizeConstraint(QLayout.SetNoConstraint)
+        content.setMinimumSize(900,560)
+        content.setSizePolicy(QSizePolicy.Expanding,QSizePolicy.Ignored)
+        root.setSpacing(8)
         root.setContentsMargins(12, 12, 12, 12)
 
         # ===== Thanh WMS dùng chung =====
@@ -903,6 +922,7 @@ del /F /Q "{backup_exe}" >nul 2>&1
         self.lblWMSState.setStyleSheet("color: #a6adc8; font-weight: 600;")
 
         global_top.addWidget(self.btnLoginWMS)
+        self.lblWMSState.setWordWrap(True)
         global_top.addWidget(self.lblWMSState)
         root.addLayout(global_top)
 
@@ -920,7 +940,8 @@ del /F /Q "{backup_exe}" >nul 2>&1
 
         banner_inner.addWidget(self.lblGifIcon)
         banner_inner.addWidget(self.lblStatusMsg)
-        global_top.addSpacing(18)
+        global_top.addSpacing(4)
+        self.lblStatusMsg.setWordWrap(True)
         global_top.addWidget(self.statusBanner)
         global_top.addStretch()
         global_top.addWidget(QLabel('Giao diện'))
@@ -941,6 +962,10 @@ del /F /Q "{backup_exe}" >nul 2>&1
         # ===== Tabs chính =====
         self.mainTabs = QTabWidget()
         root.addWidget(self.mainTabs, 1)
+        self.btnSkuTask=QPushButton('🧺 Tìm Task theo SKU')
+        self.btnSkuTask.setToolTip('Tra đơn Picked và Picking Task từ SKU/UPC, dùng phiên Chrome WMS hiện tại.')
+        self.mainTabs.setCornerWidget(self.btnSkuTask,Qt.TopRightCorner)
+        self.btnSkuTask.clicked.connect(self.open_sku_finder)
 
         # ==============================================================
         # TAB 1: COT DASHBOARD
@@ -982,7 +1007,8 @@ del /F /Q "{backup_exe}" >nul 2>&1
         top.addWidget(self.btnRefresh)
         top.addWidget(self.btnExport)
         top.addWidget(self.btnBasketOrders)
-        top.addSpacing(10)
+        excel_root.addLayout(top)
+        top=QHBoxLayout()
         top.addWidget(self.btnSelectFolder)
         top.addWidget(self.chkAutoWatch)
         top.addStretch()
@@ -993,14 +1019,14 @@ del /F /Q "{backup_exe}" >nul 2>&1
 
         filter_bar.addWidget(QLabel("🚚 New 3PL:"))
         self.combo3PL = CheckableComboBox("New 3PL")
-        self.combo3PL.setMinimumWidth(320)
+        self.combo3PL.setMinimumWidth(170)
         self.combo3PL.setMaximumWidth(400)
         filter_bar.addWidget(self.combo3PL)
 
         filter_bar.addSpacing(15)
         filter_bar.addWidget(QLabel("📍 Buyer State:"))
         self.comboState = CheckableComboBox("Buyer State")
-        self.comboState.setMinimumWidth(350)
+        self.comboState.setMinimumWidth(180)
         filter_bar.addWidget(self.comboState)
 
         filter_bar.addSpacing(15)
@@ -1099,6 +1125,8 @@ del /F /Q "{backup_exe}" >nul 2>&1
         self.lblRowCount = QLabel("📊 Tổng dòng: 0 | Đã chọn: 0")
         self.lblSelectedDetail = QLabel("💡 Chi tiết đơn: Click vào dòng để xem")
         self.lblRowCount.setStyleSheet("color: #89b4fa; font-weight: bold;")
+        self.lblSelectedDetail.setWordWrap(True)
+        self.lblRowCount.setWordWrap(True)
         self.lblSelectedDetail.setStyleSheet("color: #a6adc8;")
 
         bottom_lay.addWidget(self.lblRowCount)
@@ -1670,6 +1698,7 @@ del /F /Q "{backup_exe}" >nul 2>&1
 
     def closeEvent(self, event):
         self._closing=True
+        if self.sku_dialog is not None:self.sku_dialog.searcher.cancel()
         self.update_timer.stop()
         self._pending_load = None
         if (self.cotTab.parser and self.cotTab.parser.isRunning()) or not self.cotTab.bridge.stop():
