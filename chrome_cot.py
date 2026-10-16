@@ -6,6 +6,8 @@ Python requests, and no browser/API operation starts at application startup.
 import json
 import os
 import queue
+import threading
+from sku_search_engine import SKU_SEARCH_JS
 import time
 import unicodedata
 import re
@@ -35,6 +37,10 @@ def validate_request(msg):
     parts = urlsplit(str(msg.get('url', '')))
     if parts.scheme != 'https' or parts.netloc != 'wms.ssc.shopee.vn':
         raise ValueError('Chỉ gọi WMS trong phiên Chrome.')
+    if kind == 'WMS_SKU_SEARCH':
+        if msg.get('url') != URL_ORDER or not isinstance(msg.get('upc'),str) or not msg['upc'].strip():
+            raise ValueError('Yêu cầu tìm SKU không hợp lệ.')
+        return
     if kind == 'WMS_DOWNLOAD':
         if not parts.path.startswith('/oss_downloads_v2/'):
             raise ValueError('Link tải không phải report WMS.')
@@ -106,15 +112,32 @@ try {return {success:true,data:await wmsPost(url,body)}} catch(e) {return {succe
 class ChromeWorker(QThread):
     result = Signal(str, str)
     state = Signal(bool, str)
+    skuProgress = Signal(str,str)
 
     def __init__(self):
         super().__init__()
         self.commands = queue.Queue()
         self.network_requests = 0
+        self._sku_events={};self._sku_lock=threading.Lock()
 
     def enqueue(self, request_id, msg):
+        if msg.get('type')=='WMS_SKU_SEARCH':
+            with self._sku_lock:self._sku_events[request_id]=threading.Event()
         self.commands.put((request_id, msg))
 
+    def cancel_sku(self,request_id):
+        with self._sku_lock:
+            event=self._sku_events.get(request_id)
+            if event:event.set()
+    def sku_cancelled(self,request_id):
+        with self._sku_lock:
+            event=self._sku_events.get(request_id)
+            return event is None or event.is_set() or self.isInterruptionRequested()
+    def cancel_all_sku(self):
+        with self._sku_lock:
+            for event in self._sku_events.values():event.set()
+    def _sku_progress(self,request_id,message):
+        if not self.sku_cancelled(request_id):self.skuProgress.emit(request_id,str(message))
     @staticmethod
     def find_page(context):
         # The user may navigate to another warehouse or open a new WMS tab.
@@ -132,6 +155,8 @@ class ChromeWorker(QThread):
                 browser = pw.chromium.launch(channel='chrome', headless=False, timeout=15000)
                 try:
                     context = browser.new_context()
+                    context.expose_binding('__intraSkuCancelled',lambda source,rid:self.sku_cancelled(rid))
+                    context.expose_binding('__intraSkuProgress',lambda source,rid,message:self._sku_progress(rid,message))
                     page = context.new_page()
                     try:
                         page.goto(ORIGIN, wait_until='domcontentloaded', timeout=20000)
@@ -158,24 +183,32 @@ class ChromeWorker(QThread):
                             # Refuse a login page; the user completes login themselves.
                             if any(x in urlsplit(target.url).path.lower().split('/') for x in ('login','signin','sso','auth')):
                                 raise RuntimeError('Hãy đăng nhập và chọn kho trong Chrome trước khi tải COT.')
-                            self.network_requests += 1
-                            sku_search = request_id.startswith('sku-') and msg['type']=='WMS_POST' and urlsplit(msg['url']).path in {
-                                '/api/v2/apps/process/outbound/salesorder/search_order',
-                                '/api/v2/apps/process/taskcenter/pickingtask/search_sales_sub_picking_task',
-                            }
-                            response = target.evaluate(SKU_FETCH_JS if sku_search else FETCH_JS, {
-                                'url': msg['url'],
-                                'method': 'POST' if msg['type'] == 'WMS_POST' else 'GET',
-                                'body': msg.get('body'), 'binary': msg['type'] == 'WMS_DOWNLOAD',
-                            })
+                            if msg['type']=='WMS_SKU_SEARCH':
+                                if self.sku_cancelled(request_id):response={'success':False,'cancelled':True}
+                                else:response=target.evaluate(SKU_SEARCH_JS,{'upc':msg['upc'],'requestId':request_id})
+                                self.network_requests+=response.get('requests',0)
+                            else:
+                                self.network_requests += 1
+                                sku_search = request_id.startswith('sku-') and msg['type']=='WMS_POST' and urlsplit(msg['url']).path in {
+                                    '/api/v2/apps/process/outbound/salesorder/search_order',
+                                    '/api/v2/apps/process/taskcenter/pickingtask/search_sales_sub_picking_task',
+                                }
+                                response = target.evaluate(SKU_FETCH_JS if sku_search else FETCH_JS, {
+                                    'url': msg['url'],
+                                    'method': 'POST' if msg['type'] == 'WMS_POST' else 'GET',
+                                    'body': msg.get('body'), 'binary': msg['type'] == 'WMS_DOWNLOAD',
+                                })
                         except Exception as exc:
                             response = {'success':False,'error':str(exc)}
+                        with self._sku_lock:self._sku_events.pop(request_id,None)
                         self.result.emit(request_id, json.dumps(response, ensure_ascii=False))
                 finally:
                     browser.close()
         except Exception as exc:
             self.state.emit(False, f'Không mở/giữ được Chrome: {exc}')
         finally:
+            self.cancel_all_sku()
+            with self._sku_lock:self._sku_events.clear()
             while True:
                 try:
                     request_id, _ = self.commands.get_nowait()
@@ -188,6 +221,7 @@ class ChromeWorker(QThread):
 class NativeBridge(QObject):
     completed = Signal(str, str)
     sessionChanged = Signal(bool, str)
+    skuProgress = Signal(str,str)
 
     def __init__(self, config, save_config, parent=None):
         super().__init__(parent)
@@ -202,6 +236,7 @@ class NativeBridge(QObject):
             return
         self.worker = ChromeWorker()
         self.worker.result.connect(self.completed)
+        self.worker.skuProgress.connect(self.skuProgress)
         self.worker.state.connect(self._state)
         self.worker.start()
 
@@ -238,8 +273,12 @@ class NativeBridge(QObject):
         except Exception as exc:
             self.completed.emit(request_id, json.dumps({'success':False,'error':str(exc)}, ensure_ascii=False))
 
+    def cancel_sku(self,request_id):
+        if self.worker:self.worker.cancel_sku(request_id)
+
     def stop(self, timeout=1500):
         if self.worker and self.worker.isRunning():
+            self.worker.cancel_all_sku()
             self.worker.requestInterruption()
             return self.worker.wait(timeout)
         return True

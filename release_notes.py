@@ -2,15 +2,16 @@
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QDialog, QVBoxLayout, QTextBrowser, QPushButton, QMessageBox
 
-VERSION='3.4.1'
-TITLE='IntraCity 3.4.1'
-NOTES='''<h2>Có gì mới trong IntraCity 3.4.1?</h2>
+VERSION='3.4.2'
+TITLE='IntraCity 3.4.2'
+NOTES='''<h2>Có gì mới trong IntraCity 3.4.2?</h2>
 <ul>
+<li><b>Tìm SKU nhanh như tiện ích web:</b> tối đa 5 trang đơn và 6 SN tra Task đồng thời; bỏ khoảng nghỉ 300ms. Nút Dừng hủy các yêu cầu SKU đang chạy.</li>
 <li><b>Sửa tìm Task theo SKU:</b> xử lý danh sách rỗng, thử lại tối đa 2 lần và tiếp tục các SN còn lại khi lỗi như tiện ích web. Bỏ giới hạn 25 giây riêng cho tìm SKU; lỗi đăng nhập dừng ngay.</li>
 <li><b>Vừa màn hình laptop:</b> cửa sổ mở gọn theo vùng màn hình làm việc, không che góc phải hoặc góc dưới. Có thể phóng to khi cần; màn hình nhỏ có thanh cuộn để tới đầy đủ các mục.</li>
 <li><b>Tìm Task theo SKU:</b> nút ở góc phải thanh tab. Quét hoặc nhập SKU/UPC, bấm Enter để tìm đơn Picked và Picking Task trong 7 ngày gần nhất theo giờ Việt Nam.</li>
 <li><b>Copy mã rổ:</b> xem Task ID, Order Structure, Device ID/BSK, SKU Qty, Item Qty và số SN khớp. Copy từng task hoặc toàn bộ BSK không trùng.</li>
-<li><b>Giao diện đồng bộ:</b> công cụ mới theo chế độ sáng/tối. Chỉ gọi WMS khi tìm, từng yêu cầu lần lượt; có nút Dừng; thử lại có giới hạn như tiện ích web.</li>
+<li><b>Giao diện đồng bộ:</b> công cụ mới theo chế độ sáng/tối. Chỉ gọi WMS khi tìm, chạy song song có giới hạn; có nút Dừng; thử lại có giới hạn như tiện ích web.</li>
 </ul>
 <p>Giữ nguyên mọi điều kiện hiện tại.</p>
 <p>Thông báo hiện khi mở phiên bản mới lần đầu. Bấm Đã hiểu để không hiện lại; dùng Xem thay đổi để mở lại khi cần.</p><p>Đỗ Rê Mon♥</p>'''

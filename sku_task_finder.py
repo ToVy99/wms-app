@@ -1,7 +1,7 @@
 """Native UI for the supplied WMS SKU -> Picking Task extension.
 
 Uses the existing signed-in Chrome bridge. Searches are user initiated,
-serial, with the original extension's bounded retries and partial results. No separate browser or credentials.
+with the original extension's parallel searches, bounded retries and partial results. No separate browser or credentials.
 """
 import json
 import math
@@ -37,117 +37,36 @@ class TaskSearch(QObject):
     busyChanged=Signal(bool)
     def __init__(self,bridge,parent=None):
         super().__init__(parent);self.bridge=bridge;self.busy=False
-        self.prefix='sku-'+uuid.uuid4().hex+'-';self.counter=0;self.pending=None
-        self.cancelled=False;self.timer=QTimer(self);self.timer.setSingleShot(True)
-        self.timer.timeout.connect(self._send);self.next_request=None
+        self.prefix='sku-'+uuid.uuid4().hex+'-';self.counter=0;self.pending=None;self.cancelled=False
         self.bridge.completed.connect(self._reply)
+        self.bridge.skuProgress.connect(self._progress)
     def start(self,upc):
         if self.busy:return
         upc=''.join(upc.split())
         if not upc:self.failed.emit('Nhập hoặc quét mã SKU/UPC trước.');return
         if not self.bridge.connected:self.failed.emit('Bấm Đăng nhập WMS và chọn kho trong Chrome trước.');return
-        self.upc=upc;self.orders={};self.tasks={};self.sns=[];self.not_found=[];self.truncated=[];self.failed_sns=[];self.task_buffer=[];self.stage=1
-        self.order_page=1;self.sn_index=0;self.task_page=1;self.sn_found=False
+        self.counter+=1;self.pending=self.prefix+str(self.counter)
         self.cancelled=False;self.busy=True;self.busyChanged.emit(True)
-        self._orders()
+        self.progress.emit(upc+' · Đang tìm đơn Picked…')
+        self.bridge.request(self.pending,json.dumps({'type':'WMS_SKU_SEARCH','url':URL_ORDER,'upc':upc}))
     def cancel(self):
         if not self.busy:return
-        self.cancelled=True;self.timer.stop();self.next_request=None
-        if self.pending:self.progress.emit('Đang dừng · chờ yêu cầu đã gửi kết thúc…')
-        else:self._stop_cancelled()
-    def _stop_cancelled(self):
-        self._finish();self.progress.emit('Đã dừng tìm. Kết quả lần trước vẫn được giữ.')
-    def _finish(self):
-        self.timer.stop();self.next_request=None;self.busy=False;self.busyChanged.emit(False)
-    def _request(self,url,body,callback):
-        self.attempt=0
-        self.next_request=(url,body,callback)
-        # A single request in flight, with a pause between pages/SNs.
-        self.timer.start(0 if self.counter==0 else 300)
-    def _send(self):
-        if not self.busy or self.cancelled or self.next_request is None:return
-        url,body,callback=self.next_request;self.next_request=None
-        self.counter+=1;rid=self.prefix+str(self.counter);self.pending=(rid,callback,url,body)
-        self.bridge.request(rid,json.dumps({'type':'WMS_POST','url':url,'body':body}))
+        self.cancelled=True;self.bridge.cancel_sku(self.pending)
+        self.progress.emit('Đang dừng tìm…')
+    def _progress(self,rid,message):
+        if rid==self.pending and self.busy and not self.cancelled:self.progress.emit(message)
     def _reply(self,rid,raw):
-        if not self.pending or rid!=self.pending[0]:return
-        _,callback,url,body=self.pending;self.pending=None
-        if self.cancelled:self._stop_cancelled();return
+        if rid!=self.pending:return
+        self.pending=None;self.busy=False;self.busyChanged.emit(False)
         try:
             result=json.loads(raw)
-            if not result.get('success'):
-                message=result.get('error') or 'Lỗi WMS'
-                if result.get('auth'):
-                    self._finish();self.failed.emit(message);return
-                if self.attempt<2:
-                    self.attempt+=1
-                    self.next_request=(url,body,callback)
-                    self.progress.emit(f'{self.upc} · {message} · Thử lại {self.attempt}/2…')
-                    self.timer.start(200*self.attempt);return
-                self._request_failed(message);return
-            data=result.get('data')
-            if not isinstance(data,dict):raise ValueError('WMS trả dữ liệu không đúng định dạng.')
-            # The extension treats omitted/null list as an empty result.
-            rows=data.get('list') or []
-            if not isinstance(rows,list):raise ValueError('WMS trả danh sách không đúng định dạng.')
-            callback({**data,'list':rows})
-        except Exception as exc:
-            self._request_failed(str(exc))
-    def _request_failed(self,message):
-        if self.stage==2:
-            self.failed_sns.append(self.sns[self.sn_index])
-            self._next_sn()
-        else:
-            self._finish();self.failed.emit(message)
-    def _orders(self):
-        self.progress.emit(f'{self.upc} · Đang tìm đơn Picked · trang {self.order_page}…')
-        self._request(URL_ORDER,{'sku_upc_code':self.upc,'order_status_list':'3',
-            'pageno':self.order_page,'count':PAGE_SIZE,'is_get_total':int(self.order_page==1)},self._got_orders)
-    def _got_orders(self,data):
-        if self.order_page==1:
-            self.total=int(data.get('total') or 0);self.order_pages=max(1,math.ceil(self.total/PAGE_SIZE))
-            if self.order_pages>MAX_ORDER_PAGES:raise ValueError(f'Quá nhiều đơn ({self.total}), vượt giới hạn {MAX_ORDER_PAGES*PAGE_SIZE} của tiện ích.')
-        for order in data['list']:
-            if not isinstance(order,dict):raise ValueError('Đơn WMS không đúng định dạng.')
-            self.orders[order.get('order_number')]=order
-        if self.order_page<self.order_pages:
-            self.order_page+=1;self._orders();return
-        sns={}
-        for order in self.orders.values():
-            values=order.get('shopee_order_sn');values=values if isinstance(values,list) else [values]
-            for sn in values:
-                if sn and str(sn).strip():sns[str(sn).strip()]=None
-        self.sns=list(sns)
-        if not self.sns:self._done();return
-        self.stage=2;self.win=time_window()
-        self._task()
-    def _task(self):
-        self.progress.emit(f'{self.upc} · Tra Picking Task · {self.sn_index}/{len(self.sns)} SN · trang {self.task_page}…')
-        self._request(URL_TASK,{'search_key_two':self.sns[self.sn_index],**self.win,
-            'fulfillment_chain_dest_zone_list':[],'pageno':self.task_page,'count':PAGE_SIZE},self._got_tasks)
-    def _got_tasks(self,data):
-        sn=self.sns[self.sn_index]
-        # Like tasksForSn(), publish this SN only after all its pages succeed.
-        for task in data['list']:
-            if not isinstance(task,dict):raise ValueError('Task WMS không đúng định dạng.')
-            self.task_buffer.append(task)
-        more=self.task_page*PAGE_SIZE<int(data.get('total') or 0)
-        if more and self.task_page<MAX_TASK_PAGES:
-            self.task_page+=1;self._task();return
-        if more:self.truncated.append(sn)
-        if not self.task_buffer:self.not_found.append(sn)
-        for task in self.task_buffer:
-            key=str(task.get('sub_pickup_id',''))
-            entry=self.tasks.setdefault(key,{'task':task,'sns':set()});entry['sns'].add(sn)
-        self._next_sn()
-    def _next_sn(self):
-        self.sn_index+=1;self.task_page=1;self.task_buffer=[]
-        if self.sn_index<len(self.sns):self._task()
-        else:self._done()
-    def _done(self):
-        result={'upc':self.upc,'total_api':self.total,'orders':len(self.orders),
-            'sns':self.sns,'tasks':self.tasks,'not_found':self.not_found,'truncated':self.truncated,'failed':self.failed_sns}
-        self._finish();self.completed.emit(result)
+            if self.cancelled or result.get('cancelled'):
+                self.progress.emit('Đã dừng tìm. Kết quả lần trước vẫn được giữ.');return
+            if not result.get('success'):raise ValueError(result.get('error') or 'Lỗi WMS')
+            data=result['data']
+            for entry in data['tasks'].values():entry['sns']=set(entry['sns'])
+            self.completed.emit(data)
+        except Exception as exc:self.failed.emit(str(exc))
 
 class SkuTaskDialog(QDialog):
     def __init__(self,bridge,parent=None):

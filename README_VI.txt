@@ -1,4 +1,4 @@
-IntraCity 3.4.1 — giao diện cập nhật (mã nội bộ 3.4.1)
+IntraCity 3.4.2 — giao diện cập nhật (mã nội bộ 3.4.2)
 
 Các thay đổi:
 - Sẵn sàng làm việc nằm cùng hàng Đăng nhập WMS.
@@ -21,7 +21,7 @@ Các thay đổi:
 3. Mở PowerShell trong thư mục này, chạy:
    powershell.exe -NoProfile -ExecutionPolicy Bypass -File ".\build_windows.ps1"
 4. Sau khi build và kiểm tra hoàn tất, file chạy nằm tại:
-   dist\IntraCity 3.4.1.exe
+   dist\IntraCity 3.4.2.exe
 
 Không chỉ đóng gói một file .py; giữ đầy đủ các file của bộ nguồn này.
 Script dùng py -3.12, tạo .venv-build, cài các thư viện cần thiết,
@@ -105,9 +105,11 @@ CẬP NHẬT 3.4:
 - Giữ giới hạn của tiện ích: 2000 đơn, tối đa 100 task/SN; hiện cảnh báo nếu thiếu.
 - Không áp dụng bộ lọc COT vào tìm SKU; tra kho đang chọn trong Chrome như tiện ích.
 
-CẬP NHẬT 3.4.1 (chỉ công cụ tìm Task theo SKU):
+CẬP NHẬT 3.4.2 (chỉ công cụ tìm Task theo SKU):
 - list thiếu/null được coi là rỗng như tiện ích.
 - Thử lại tối đa 2 lần, chờ 200/400ms; lỗi đăng nhập dừng ngay.
 - SN lỗi sau các lần thử được ghi cảnh báo; vẫn hiện task của SN thành công.
 - Không áp giới hạn 25 giây cho SKU; thời gian chờ COT giữ nguyên.
 - API vẫn chạy tuần tự để hạn chế tải server; chỉ bắt đầu khi bấm tìm.
+
+CẬP NHẬT 3.4.2: Tìm SKU chạy thực sự song song trong Chrome: tối đa 5 trang đơn/lượt và 6 SN tra Task; bỏ nghỉ 300ms. Giữ thử lại 2 lần, lỗi SN riêng và giới hạn dữ liệu của tiện ích. Nút Dừng hủy fetch SKU đang chạy. COT/Excel không đổi.

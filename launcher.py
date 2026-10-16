@@ -6,6 +6,7 @@ from pathlib import Path
 from PySide6.QtGui import QIcon
 import intra_2_3_COT_Dashboard_loginfix as intra
 from chrome_cot import FETCH_JS, SKU_FETCH_JS
+from sku_search_engine import SKU_SEARCH_JS
 
 
 def apply_app_icon(app, window):
@@ -63,11 +64,14 @@ def main():
                     browser=pw.chromium.launch(channel='chrome',headless=True)
                     context=browser.new_context()
                     context.add_cookies([{'name':'fixture_session','value':'fixture-only','domain':'wms.ssc.shopee.vn','path':'/','secure':True}])
-                    seen=[]
+                    seen=[];sku_flow=[False]
                     def route(r):
                         if '/api/' in r.request.url:
                             seen.append(r.request.all_headers())
-                            r.fulfill(status=200,content_type='application/json',body='{"retcode":0,"data":{"total":2112}}')
+                            data={'total':2112}
+                            if sku_flow[0]:
+                                data={'total':1,'list':[{'order_number':'O','shopee_order_sn':['S1','S2']}] } if r.request.url.endswith('/search_order') else {'total':1,'list':[{'sub_pickup_id':'T','device_id':'B'}]}
+                            r.fulfill(status=200,content_type='application/json',body=json.dumps({'retcode':0,'data':data}))
                         else:
                             r.fulfill(status=200,content_type='text/html',body='<html>Fixture WMS</html>')
                     context.route('https://wms.ssc.shopee.vn/**',route)
@@ -82,6 +86,13 @@ def main():
                     sku_response=page.evaluate(SKU_FETCH_JS,{'url':'https://wms.ssc.shopee.vn/api/v2/apps/process/taskcenter/pickingtask/search_sales_sub_picking_task','body':{'search_key_two':'FIXTURE'}})
                     assert sku_response=={'success':True,'data':{'total':2112}}
                     assert len(seen)==2
+                    context.expose_binding('__intraSkuCancelled',lambda source,rid:False)
+                    context.expose_binding('__intraSkuProgress',lambda source,rid,message:None)
+                    sku_flow[0]=True
+                    parallel_result=page.evaluate(SKU_SEARCH_JS,{'upc':'00123','requestId':'sku-fixture'})
+                    assert parallel_result['success'],parallel_result
+                    assert set(parallel_result['data']['tasks']['T']['sns'])=={'S1','S2'}
+                    assert parallel_result['requests']==3
                     browser.close()
                 window.set_banner_status(False,custom_msg='Chrome transport + native COT verified')
                 finish({'passed':True,'tabs':2,'logic_version':'1.4','native_ui':True,'startup_wms_requests':0,
