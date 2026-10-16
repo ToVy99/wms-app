@@ -24,7 +24,7 @@ class FinderTests(unittest.TestCase):
     def test_parallel_engine(self):
         node=shutil.which('node')
         if not node:self.skipTest('Node.js required only for engine tests')
-        r=subprocess.run([node,str(Path(__file__).with_name('test_sku_engine.js'))],input=SKU_SEARCH_JS,text=True,capture_output=True,timeout=20)
+        r=subprocess.run([node,str(Path(__file__).with_name('test_sku_engine.js'))],input=SKU_SEARCH_JS,text=True,encoding='utf-8',capture_output=True,timeout=20)
         self.assertEqual(r.returncode,0,r.stdout+r.stderr)
     def test_controller_no_duplicate_calls_cancel_and_stale_results(self):
         b=Bridge();s=TaskSearch(b);results=[];progress=[];s.completed.connect(results.append);s.progress.connect(progress.append)
