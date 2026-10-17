@@ -118,7 +118,7 @@ class Release33Tests(unittest.TestCase):
             tab.bridge.connected=True;calls=[];tab.request=lambda msg,cb:calls.append(msg);tab.fetch_dataset()
             angle=tab.spinner.angle;QTest.qWait(140);self.assertNotEqual(tab.spinner.angle,angle);self.assertEqual(len(calls),1)
             tab.report_name='broken.xlsx';tab.got_bytes(base64.b64encode(b'broken').decode())
-            self.assertIn('Đang đọc',tab.loading_stage.text());tab.parser.wait(10000);self.app.processEvents()
+            self.assertIn('Đang đọc',tab.loading_stage.toolTip());tab.parser.wait(10000);self.app.processEvents()
             self.assertEqual(tab.orders,old['orders']);self.assertEqual(tab.table.item(0,1).text(),'OLD');self.assertFalse(tab.busy);self.assertFalse(tab.spinner.timer.isActive());self.assertIn('Lỗi:',tab.message.text())
         finally:tab.close();tab.deleteLater()
     def test_area_request_uses_displayed_scope_after_switching_cot(self):
@@ -128,7 +128,7 @@ class Release33Tests(unittest.TestCase):
             previous=tab.loaded_scope;tab.carrier.setCurrentIndex(tab.carrier.findData('aha'));tab.select_cot('2')
             calls=[];tab.request=lambda msg,cb:calls.append(msg);tab.select_status(3)
             body=calls[0]['body'];self.assertEqual(body['beg_ctime'],int(previous[2].timestamp()));self.assertEqual(body['channel_id_list'],previous[1]['channels'])
-            self.assertIn('Area',tab.loading_stage.text());tab.got_area({'total':1,'list':[{'order_number':'OLD','pre_hit_zone_list':['A1']}]})
+            self.assertIn('Area',tab.loading_stage.toolTip());tab.got_area({'total':1,'list':[{'order_number':'OLD','pre_hit_zone_list':['A1']}]})
             self.assertEqual(tab.orders[0]['area'],'A1');self.assertFalse(tab.spinner.timer.isActive())
         finally:tab.close();tab.deleteLater()
 

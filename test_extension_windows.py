@@ -67,8 +67,22 @@ with tempfile.TemporaryDirectory() as td:
             assert all('fixture_session=fixture-only' in headers.get('cookie','') for _,headers in requests)
             assert len(requests)==5,requests
             assert all(headers.get('x-cctv-tenant-id')=='WMS' for url,headers in requests if '/api/' in url)
-            # Navigation invalidates selection; no hidden switch to another warehouse.
-            page.goto('https://wms.ssc.shopee.vn/another');wait(lambda:states and not states[-1][0])
+            # Disconnect works from both sides, including after the WMS tab closes.
+            def reconnect():
+                expected=popup.evaluate("async()=> (await chrome.tabs.query({url:'https://wms.ssc.shopee.vn/*'}))[0].id")
+                popup.locator('#refresh').click()
+                wait(lambda:popup.locator('#tabs').input_value()==str(expected))
+                popup.locator('#connect').click();wait(lambda:states and states[-1][0])
+            popup.locator('#disconnect').click();wait(lambda:states and not states[-1][0])
+            wait(lambda:'Đã ngắt' in popup.locator('#state').inner_text())
+            reconnect();page.close();wait(lambda:states and not states[-1][0])
+            popup.locator('#disconnect').click();wait(lambda:'Đã ngắt' in popup.locator('#state').inner_text())
+            page=context.new_page();page.goto('https://wms.ssc.shopee.vn/home');reconnect()
+            worker.disconnect_session();wait(lambda:states and not states[-1][0])
+            wait(lambda:'Đã ngắt' in popup.locator('#state').inner_text())
+            reconnect();page.goto('https://wms.ssc.shopee.vn/another');wait(lambda:states and not states[-1][0])
+            assert len(requests)==5,'Connecting/disconnecting must not fetch WMS data'
+            print('PASS: popup disconnect, closed-tab disconnect, app disconnect, reconnect, and no extra WMS calls',flush=True)
             context.close()
         print('PASS: packaged native host + real extension; COT, chunked report >1 MB, SKU, cookies, navigation disconnect; zero real WMS calls')
     finally:

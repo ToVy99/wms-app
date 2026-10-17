@@ -13,7 +13,7 @@ class ThemeTests(unittest.TestCase):
     def setUpClass(cls):cls.app=QApplication.instance() or QApplication([])
     def setUp(self):
         self.saved=[]
-        self.patches=[patch.object(intra,'load_config',return_value={'appearance':'dark','seen_release':'3.4','seen_release_id':'3.4-compact-bridge-20261017'}),patch.object(intra,'save_config',side_effect=lambda c:self.saved.append(dict(c)) or True),patch.object(intra.WMSDashboard,'start_folder_watcher'),patch.object(intra.WMSDashboard,'check_for_updates')]
+        self.patches=[patch.object(intra,'load_config',return_value={'appearance':'dark','seen_release':'3.4','seen_release_id':'3.4-compact-bridge-fix-20261017'}),patch.object(intra,'save_config',side_effect=lambda c:self.saved.append(dict(c)) or True),patch.object(intra.WMSDashboard,'start_folder_watcher'),patch.object(intra.WMSDashboard,'check_for_updates')]
         for p in self.patches:p.start()
         self.window=intra.WMSDashboard()
         self.tab=self.window.cotTab

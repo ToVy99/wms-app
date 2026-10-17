@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "IntraCity · Kết nối WMS",
-  "version": "3.4.0",
+  "version": "3.4.1",
   "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEApZY/NbADhrKCEHBWv+sts5FbmzDiRh23Y/C5oFdjTQ0kHETa60bV/B3ejIkA9MSlvbUvYv0gyLpYfqdLa//lamGj1jBORzksrmLn44QANqCdcDdC6ubtrU8Rd7viEmeXDNFPA5Mvq2pDxv4CfawJJ30/zvsflNIkVEXmCHp0PEla7yG96jFUVEfVacJHymiKGUjwh+f/yTaf1znas2jFQvYCp/UJ2ipn9ZaedVn2wGCCmEQ6OJ/+4WuibcGHdSZpJsLGeVxbTNoJtlrNaMR6stoh72aTy6aLkuoyBMot/1vtMe3ZmaBOzPydgGgyqkbMZKwV1e2Vjqd0yz8XvnlllwIDAQAB",
   "description": "Kết nối tab WMS được chọn với IntraCity trên máy. Chỉ tải khi bấm trong app.",
   "permissions": [

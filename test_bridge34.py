@@ -69,6 +69,50 @@ class BridgeTests(unittest.TestCase):
             finally:
                 if client:client.close()
                 w.requestInterruption();self.assertTrue(w.wait(5000))
+
+    def test_disconnect_fails_active_work_and_allows_reconnect(self):
+        with tempfile.TemporaryDirectory() as directory:
+            w=ExtensionWorker(directory);states=[];results=[];client=None
+            w.state.connect(lambda ok,text:states.append((ok,text)))
+            w.result.connect(lambda rid,raw:results.append((rid,json.loads(raw))))
+            w.start()
+            try:
+                path=Path(directory)/'endpoint.json';self.spin(path.exists);info=json.loads(path.read_text())
+                def connect():
+                    c=socket.create_connection(('127.0.0.1',info['port']),timeout=3)
+                    c.sendall(encode_frame({'kind':'hello','token':info['token'],'extension':EXTENSION_ID}))
+                    self.assertEqual(read_frame(c.recv)['kind'],'ready')
+                    c.sendall(encode_frame({'kind':'state','connected':True,'text':'fixture'}))
+                    self.spin(lambda:states and states[-1][0]);return c
+                client=connect();w.enqueue('active',{'type':'WMS_GET'});read_frame(client.recv)
+                w.enqueue('queued',{'type':'WMS_GET'});w.disconnect_session()
+                self.assertEqual(read_frame(client.recv)['kind'],'disconnect')
+                self.spin(lambda:len(results)==2 and not states[-1][0])
+                self.assertEqual({r[0] for r in results},{'active','queued'})
+                self.assertTrue(all(not r[1]['success'] for r in results))
+                client.close();client=connect()
+                client.close();client=None;self.spin(lambda:not states[-1][0])
+                w.disconnect_session();self.spin(lambda:'Đã ngắt' in states[-1][1])
+                client=connect()
+            finally:
+                if client:client.close()
+                w.requestInterruption();self.assertTrue(w.wait(5000))
+
+    def test_setup_shows_current_state_and_exports_only_bundled_assets(self):
+        from extension_bridge import ExtensionSetupDialog,save_extension_zip,ASSETS
+        import zipfile
+        bridge=NativeBridge({},lambda _:True);bridge.mode='extension';bridge._state(True,'Kho A')
+        with tempfile.TemporaryDirectory() as directory:
+            dialog=ExtensionSetupDialog(None,bridge,Path(directory))
+            self.assertIn('Đã kết nối',dialog.state_label.text());self.assertIn('Kho A',dialog.state_label.text())
+            dialog.disconnect_button.click();self.assertFalse(bridge.connected)
+            self.assertIn('Đã ngắt',dialog.state_label.text())
+            path=Path(directory)/'extension.zip';save_extension_zip(path)
+            with zipfile.ZipFile(path) as archive:
+                self.assertIsNone(archive.testzip())
+                self.assertEqual(set(archive.namelist()),{'IntraCity_Chrome_Extension/'+name for name in ASSETS}|{'HUONG_DAN.txt'})
+                for name,source in ASSETS.items():self.assertEqual(archive.read('IntraCity_Chrome_Extension/'+name),Path(source).read_bytes())
+            dialog.accept()
     def test_basket_projection_preserves_all_source_orders_and_statistics(self):
         tab=ChromeCotTab({},lambda _:True)
         def row(n,baskets,status=3):return dict(order_number=n,order_status=status,bsks=set(baskets),sns={'SN'+n},picking={'P'+n},sku_names={'SKU'+n},area='A1',wave_type='Single',ctime_text='x',cutoff_text='y')

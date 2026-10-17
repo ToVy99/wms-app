@@ -229,6 +229,7 @@ class NativeBridge(QObject):
         self.save_config = save_config
         self.worker = None
         self.connected = False
+        self.session_message='Chưa kết nối WMS.'
         self.mode='chrome'; self.workers={}; self.states={}; self.inflight=set()
 
     def connect_chrome(self):
@@ -237,6 +238,13 @@ class NativeBridge(QObject):
     def connect_extension(self):
         from extension_bridge import ExtensionWorker
         self._connect_mode('extension',ExtensionWorker)
+
+    def disconnect_extension(self):
+        worker=self.workers.get('extension')
+        message='Đã ngắt kết nối tiện ích Chrome.'
+        self.states['extension']=(False,message)
+        if self.mode=='extension':self._state(False,message)
+        if worker and worker.isRunning():worker.disconnect_session()
 
     def _connect_mode(self,mode,factory):
         if self.inflight:
@@ -262,6 +270,7 @@ class NativeBridge(QObject):
     @Slot(bool, str)
     def _state(self, connected, message):
         self.connected = connected
+        self.session_message=message
         self.sessionChanged.emit(connected, message)
 
     @Slot(str, str)
@@ -391,14 +400,15 @@ class ChromeCotTab(QWidget):
         self.loading_indicator=QWidget(); indicator=QHBoxLayout(self.loading_indicator)
         indicator.setContentsMargins(0,0,0,0); indicator.setSpacing(4)
         self.spinner=LoadingSpinner(); indicator.addWidget(self.spinner)
-        self.loading_stage=QLabel(); self.loading_stage.setFixedWidth(100); self.loading_stage.setWordWrap(True)
+        self.loading_stage=QLabel(); self.loading_stage.setFixedWidth(76); self.loading_stage.setWordWrap(False)
         self.loading_stage.setStyleSheet('font-size:11px; color:#89b4fa; font-weight:600;')
         indicator.addWidget(self.loading_stage); self.loading_indicator.hide()
         self.settings=QPushButton('⋯'); self.settings.setToolTip('Khung giờ COT'); self.settings.setFixedWidth(30); self.settings.setStyleSheet('padding:1px; font-size:18px;'); self.settings.clicked.connect(self.open_settings)
         self.carrier.setMinimumWidth(95); self.date.setFixedWidth(120)
         self.save_report=QPushButton('Lưu Excel gốc'); self.save_report.setEnabled(False); self.save_report.clicked.connect(self.save_original_report)
         for w in (self.carrier,self.date,self.load,self.save_report,self.settings): top.addWidget(w)
-        left.addWidget(self.loading_indicator)
+        policy=self.loading_indicator.sizePolicy(); policy.setRetainSizeWhenHidden(True); self.loading_indicator.setSizePolicy(policy)
+        top.addWidget(self.loading_indicator)
         top.addStretch()
         self.cot_row=QGridLayout(); left.addLayout(self.cot_row); self.cot_buttons=[]; self.cot_id=None
         self.range_label=QLabel(); self.range_label.setWordWrap(True); left.addWidget(self.range_label)
@@ -431,7 +441,10 @@ class ChromeCotTab(QWidget):
         header.addWidget(self.status_panel,2)
         filters=QHBoxLayout(); lower.addLayout(filters)
         self.area=QComboBox(); self.wave=QComboBox()
-        self.area.setMinimumWidth(110); self.wave.setMinimumWidth(120)
+        self.area.setMinimumWidth(110); self.wave.setMinimumWidth(300); self.wave.setMaximumWidth(360)
+        self.wave.setSizeAdjustPolicy(QComboBox.SizeAdjustPolicy.AdjustToMinimumContentsLengthWithIcon)
+        self.wave.view().setMinimumWidth(360)
+        self.wave.currentTextChanged.connect(self.wave.setToolTip)
         self.area.hide()  # Keep the data model; only the Area picker is removed.
         filters.addWidget(QLabel('Wave Type')); filters.addWidget(self.wave)
         self.basket_filter=QPushButton('Picked có mã rổ'); self.basket_filter.setCheckable(True)
@@ -517,7 +530,10 @@ class ChromeCotTab(QWidget):
         self.dataset_note.show()
 
     def set_stage(self,text):
-        self.loading_stage.setText(text)
+        compact=text.removeprefix('Đang ')
+        compact=compact[:1].upper()+compact[1:]
+        self.loading_stage.setText(self.loading_stage.fontMetrics().elidedText(compact,Qt.TextElideMode.ElideRight,self.loading_stage.width()))
+        self.loading_stage.setToolTip(text)
         self.loading_indicator.setToolTip(text)
 
     def set_busy(self,busy):
@@ -689,6 +705,8 @@ class ChromeCotTab(QWidget):
                 label=('Chưa có Area' if value=='-' else 'Khu '+value) if field=='area' else value
                 combo.addItem(f'{label} ({n})'+(f' · {pct:.2f}%' if field=='wave_type' else ''),value)
             idx=combo.findData(active); combo.setCurrentIndex(max(0,idx)); combo.blockSignals(False)
+            for i in range(combo.count()):combo.setItemData(i,combo.itemText(i),Qt.ItemDataRole.ToolTipRole)
+            combo.setToolTip(combo.currentText())
         self.render_table()
 
     def select_status(self,code):

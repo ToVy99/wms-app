@@ -3,9 +3,17 @@ from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QDialog, QVBoxLayout, QTextBrowser, QPushButton, QMessageBox
 
 VERSION='3.4'
-RELEASE_ID='3.4-compact-bridge-20261017'
+RELEASE_ID='3.4-compact-bridge-fix-20261017'
 TITLE='IntraCity 3.4'
 NOTES='''<h2>Có gì mới trong IntraCity 3.4?</h2>
+<p><b>Bổ sung ngày 17/10:</b></p>
+<ul>
+<li>Hoạt ảnh tải nằm gọn bên phải nút ⋯, cùng hàng với Lưu Excel gốc.</li>
+<li>Nới rộng Wave Type, thu gọn ô tìm đơn; rê chuột để xem đầy đủ nội dung.</li>
+<li>Đồng bộ trạng thái kết nối; ngắt cầu nối khi đóng hoặc tải lại tab WMS. Thêm nút Ngắt kết nối trong app.</li>
+<li>Thêm nút Lưu tiện ích (.zip) ngay trong cửa sổ kết nối. Chỉ cần gửi EXE cho người dùng.</li>
+</ul>
+<p><b>Các thay đổi của bản 3.4:</b></p>
 <ul>
 <li><b>Giao diện gọn hơn:</b> chuyển COT / Excel–Outbound lên giữa thanh trên cùng, tăng diện tích bảng đơn.</li>
 <li><b>Thu gọn thao tác:</b> gom các nút chọn đơn, bỏ chọn, Copy OBVN và Picking ID / BSK vào menu Thao tác. Đưa “Lưu Excel gốc” gần nút Tải dữ liệu.</li>

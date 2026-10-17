@@ -58,6 +58,13 @@ def main():
                 assert window.topTabs.count()==2
                 from extension_bridge import ASSETS
                 assert all(Path(__file__).resolve().with_name(name).is_file() for name in ASSETS.values())
+                import tempfile,zipfile
+                from extension_bridge import save_extension_zip
+                with tempfile.TemporaryDirectory() as td:
+                    archive_path=Path(td)/'extension.zip';save_extension_zip(archive_path)
+                    with zipfile.ZipFile(archive_path) as archive:
+                        assert archive.testzip() is None
+                        assert 'IntraCity_Chrome_Extension/manifest.json' in archive.namelist()
                 available=window.screen().availableGeometry()
                 assert available.contains(window.frameGeometry())
                 window.open_sku_finder()

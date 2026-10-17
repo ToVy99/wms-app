@@ -1,12 +1,13 @@
 const HOST='vn.intracity.wms_bridge';
 let port=null,selectedTab=null,connected=false,lastError='',heartbeat=null;
 const active=new Map();
-function send(message){if(port)port.postMessage(message);}
+function send(message){try{if(port)port.postMessage(message);}catch(_){} }
 function status(){return {connected,tabId:selectedTab,error:lastError,busy:active.size>0};}
 function fail(id,error){send({kind:'result_start',id});send({kind:'result_chunk',id,seq:0,text:JSON.stringify({success:false,error})});send({kind:'result_end',id,count:1});active.delete(id);}
-async function disconnect(){
+async function disconnect(reason='Đã ngắt kết nối. Chọn tab WMS rồi bấm Kết nối khi cần.'){
   for(const [id,tabId] of active)chrome.tabs.sendMessage(tabId,{kind:'cancel',id}).catch(()=>{});
-  active.clear();connected=false;
+  send({kind:'state',connected:false,text:reason});
+  active.clear();connected=false;selectedTab=null;lastError=reason;
   if(heartbeat)clearInterval(heartbeat);heartbeat=null;
   const old=port;port=null;if(old)old.disconnect();
 }
@@ -22,7 +23,7 @@ async function connect(tabId){
     if(port!==native)return;
     lastError=chrome.runtime.lastError?.message||'App đã đóng hoặc cầu nối đã ngắt.';
     for(const [id,target] of active)chrome.tabs.sendMessage(target,{kind:'cancel',id}).catch(()=>{});
-    active.clear();connected=false;port=null;if(heartbeat)clearInterval(heartbeat);
+    active.clear();connected=false;selectedTab=null;port=null;if(heartbeat)clearInterval(heartbeat);heartbeat=null;
   });
   native.onMessage.addListener(async message=>{
     if(port!==native)return;
@@ -63,9 +64,7 @@ chrome.runtime.onMessage.addListener((message,sender,reply)=>{
 });
 function tabLost(tabId){
   if(tabId!==selectedTab)return;
-  for(const [id,target] of active)if(target===tabId)fail(id,'Tab WMS đã đóng hoặc tải lại. Hãy kết nối lại.');
-  connected=false;lastError='Tab WMS thay đổi. Hãy kết nối lại sau khi chọn kho.';
-  send({kind:'state',connected:false,text:lastError});
+  disconnect('Tab WMS đã đóng hoặc tải lại. Hãy chọn đúng kho rồi kết nối lại.');
 }
 chrome.tabs.onRemoved.addListener(tabLost);
 chrome.tabs.onUpdated.addListener((id,change)=>{if(change.status==='loading')tabLost(id);});
