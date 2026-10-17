@@ -3,6 +3,11 @@ import json
 import sys
 import time
 from pathlib import Path
+# Native Messaging must start before importing GUI / pandas.
+if any(arg.startswith('chrome-extension://') for arg in sys.argv[1:]):
+    from native_link import relay
+    sys.exit(relay(next(arg for arg in sys.argv[1:] if arg.startswith('chrome-extension://'))))
+
 from PySide6.QtGui import QIcon
 import intra_2_3_COT_Dashboard_loginfix as intra
 from chrome_cot import FETCH_JS, SKU_FETCH_JS
@@ -23,6 +28,7 @@ def main():
     if smoke:
         intra.AutoUpdaterThread.run = lambda self: None
         intra.WMSDashboard.start_folder_watcher = lambda self, path=None: None
+        intra.show_changes = lambda *args, **kwargs: None
     app = intra.QApplication(sys.argv)
     window = intra.WMSDashboard()
     apply_app_icon(app, window)
@@ -48,6 +54,10 @@ def main():
                 assert not app.windowIcon().isNull()
                 assert not window.windowIcon().isNull()
                 assert window.mainTabs.count()==2
+                assert window.mainTabs.tabBar().isHidden()
+                assert window.topTabs.count()==2
+                from extension_bridge import ASSETS
+                assert all(Path(__file__).resolve().with_name(name).is_file() for name in ASSETS.values())
                 available=window.screen().availableGeometry()
                 assert available.contains(window.frameGeometry())
                 window.open_sku_finder()

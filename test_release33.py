@@ -13,7 +13,7 @@ from cot_widgets import SlidingOrders
 from test_native_cot import fixture
 from chrome_cot import ChromeCotTab
 import intra_2_3_COT_Dashboard_loginfix as intra
-from release_notes import VERSION,show_changes
+from release_notes import VERSION,RELEASE_ID,show_changes
 HEAD=['WMS Order No','Status','New 3PL','Buyer State','SKU Name','Picking ID','Basket ID']
 def workbook(sheets):
     wb=Workbook();wb.remove(wb.active)
@@ -63,10 +63,10 @@ class Release33Tests(unittest.TestCase):
     def test_overlay_keeps_upper_fixed_and_restores_position(self):
         saved=[];config={};panel=SlidingOrders(config,lambda c:saved.append(dict(c)) or True);panel.resize(1200,650);panel.show();self.app.processEvents()
         original=panel.upper.geometry();oldheight=panel.lower.height();panel.handle.moved.emit(-100);self.app.processEvents()
-        self.assertEqual(panel.upper.geometry(),original);self.assertEqual(panel.lower.y(),128);self.assertGreater(panel.lower.height(),oldheight)
-        panel.handle.released.emit();self.assertEqual(saved[-1]['cot_panel_reveal'],128)
-        panel.toggle();self.assertEqual(panel.lower.y(),0);panel.toggle();self.assertEqual(panel.lower.y(),128)
-        restored=SlidingOrders(config,lambda c:True);self.assertEqual(restored.reveal,128)
+        self.assertEqual(panel.upper.geometry(),original);self.assertEqual(panel.lower.y(),104);self.assertGreater(panel.lower.height(),oldheight)
+        panel.handle.released.emit();self.assertEqual(saved[-1]['cot_panel_reveal'],104)
+        panel.toggle();self.assertEqual(panel.lower.y(),0);panel.toggle();self.assertEqual(panel.lower.y(),104)
+        restored=SlidingOrders(config,lambda c:True);self.assertEqual(restored.reveal,104)
         panel.close();restored.close();panel.deleteLater();restored.deleteLater()
     def test_save_original_bytes_without_requests(self):
         tab=ChromeCotTab({},lambda c:True);self.assertFalse(tab.save_report.isEnabled())
@@ -79,14 +79,14 @@ class Release33Tests(unittest.TestCase):
             self.assertEqual(calls,[])
         finally:tab.close();tab.deleteLater()
     def test_whats_new_ack_once_and_reopen(self):
-        with patch.object(intra,'load_config',return_value={'seen_release':VERSION}),patch.object(intra.WMSDashboard,'start_folder_watcher'),patch.object(intra.WMSDashboard,'check_for_updates'):
+        with patch.object(intra,'load_config',return_value={'seen_release':VERSION,'seen_release_id':RELEASE_ID}),patch.object(intra.WMSDashboard,'start_folder_watcher'),patch.object(intra.WMSDashboard,'check_for_updates'):
             window=intra.WMSDashboard();self.app.processEvents()
         try:
-            window.config.pop('seen_release',None);saved=[];show_changes(window,lambda c:saved.append(dict(c)) or True,automatic=True)
+            window.config.pop('seen_release',None);window.config.pop('seen_release_id',None);saved=[];show_changes(window,lambda c:saved.append(dict(c)) or True,automatic=True)
             self.assertTrue(window._whats_new_dialog.isVisible());window._whats_new_dialog.accept();self.app.processEvents();self.assertEqual(saved[-1]['seen_release'],VERSION)
             show_changes(window,lambda c:True,automatic=True);self.assertIsNone(window._whats_new_dialog)
             show_changes(window,lambda c:True);self.assertTrue(window._whats_new_dialog.isVisible());window._whats_new_dialog.reject()
-            window.config.pop('seen_release',None)
+            window.config.pop('seen_release',None);window.config.pop('seen_release_id',None)
             with patch('release_notes.QMessageBox.warning'):
                 show_changes(window,lambda c:False);window._whats_new_dialog.accept()
             self.assertNotIn('seen_release',window.config)

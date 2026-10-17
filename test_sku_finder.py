@@ -49,7 +49,7 @@ class FinderTests(unittest.TestCase):
         d.render({'upc':'A','orders':2,'total_api':2,'sns':['S1','S2'],'tasks':{'T':{'task':{'sub_pickup_id':'T','device_id_list':['B1','B2'],'order_structure_list':[1]},'sns':{'S1','S2'}}},'not_found':[],'failed':[],'truncated':[]})
         d.copy_all.click();self.assertEqual(self.app.clipboard().text(),'B1\nB2');d.input.setText('A');d.start();d.reject();self.assertEqual(b.cancelled,[b.calls[-1][0]])
     def test_laptop_window_and_dialog_are_local_and_fit(self):
-        with patch.object(intra,'load_config',return_value={'seen_release':VERSION}),patch.object(intra,'save_config',return_value=True),patch.object(intra.WMSDashboard,'start_folder_watcher'),patch.object(intra.WMSDashboard,'check_for_updates'):
+        with patch.object(intra,'load_config',return_value={'seen_release':VERSION,'seen_release_id':'3.4-compact-bridge-20261017'}),patch.object(intra,'save_config',return_value=True),patch.object(intra.WMSDashboard,'start_folder_watcher'),patch.object(intra.WMSDashboard,'check_for_updates'):
             w=intra.WMSDashboard();w.show();self.app.processEvents()
         try:
             for rect in [QRect(0,0,1366,728),QRect(0,0,1093,582),QRect(-1280,0,1280,720)]:

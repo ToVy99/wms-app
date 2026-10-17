@@ -1,0 +1,45 @@
+INTRACITY 3.4 — HAI CÁCH KẾT NỐI WMS
+
+1. MỞ CHROME RIÊNG (CÁCH CŨ)
+- Chạy IntraCity 3.4.exe.
+- Bấm Đăng nhập WMS > Mở Chrome riêng / Đăng nhập WMS.
+- Đăng nhập, chọn đúng kho rồi bấm Tải dữ liệu hoặc mở Tìm SKU.
+- Không cần cài tiện ích.
+
+2. DÙNG CHROME ĐANG MỞ
+Thiết lập lần đầu, bằng chính tài khoản Windows đang dùng Chrome:
+- Đặt EXE vào thư mục cố định (không chạy ngay bên trong ZIP).
+- Trong app: Đăng nhập WMS > Dùng Chrome đang mở qua tiện ích.
+- App chuẩn bị cầu nối và hiển thị đường dẫn thư mục tiện ích.
+- Mở chrome://extensions trong Chrome, bật Chế độ dành cho nhà phát triển.
+- Chọn Tải tiện ích đã giải nén (Load unpacked), chọn đúng thư mục app vừa mở.
+- Trong Chrome, mở tiện ích IntraCity (biểu tượng mảnh ghép), chọn tab WMS đã
+  đăng nhập đúng kho rồi bấm Kết nối tab đã chọn.
+- Khi app báo Tiện ích Chrome đã kết nối, bấm Tải dữ liệu hoặc Tìm SKU như cũ.
+
+Những lần sau:
+- Mở app > Đăng nhập WMS > Dùng Chrome đang mở qua tiện ích.
+- Trong tiện ích, chọn tab WMS và bấm Kết nối. Không phải đăng nhập lại nếu
+  phiên WMS của tab đó còn hiệu lực.
+- Khi tải lại/đóng tab hoặc thay đổi kho làm trang tải lại, kết nối lại tiện ích.
+- Nếu đổi vị trí file EXE, chọn lại cách kết nối tiện ích trong app để cập nhật
+  đường dẫn cầu nối. Nếu cập nhật tiện ích, bấm nút Tải lại trên chrome://extensions.
+- Nếu máy công ty chặn cài tiện ích, cách Mở Chrome riêng vẫn dùng như trước.
+
+Mỗi tác vụ chỉ chạy trên một kết nối. Không đổi kết nối giữa khi đang tải COT
+hoặc tìm SKU. Có thể giữ Chrome riêng mở khi chuyển sang dùng tiện ích.
+Tiện ích chỉ được truy cập website WMS. Không chuyển cookie hoặc mật khẩu về app.
+Không tự tải đơn khi mở app. Thông tin trạng thái kết nối trao đổi trên máy.
+Dừng tìm SKU sẽ hủy các yêu cầu đang chạy và không gửi lượt tiếp theo.
+
+PICKED CÓ MÃ RỔ
+- Mỗi mã rổ là một dòng, gom đủ OBVN, SN, Picking ID, SKU và khu vực liên quan.
+- Một đơn có nhiều mã rổ sẽ góp vào từng mã rổ đó; dữ liệu đơn gốc không bị xóa.
+- Copy OBVN / xem Picking ID qua menu Thao tác lấy đủ đơn của các dòng đang chọn.
+- Tổng đơn, tỷ lệ và thống kê khu vực vẫn đếm theo đơn, không chuyển thành số rổ.
+
+MÃ NGUỒN VÀ TỰ BUILD
+- Windows 10/11 64-bit, Python 3.12; chạy build_windows.ps1 trong thư mục nguồn.
+- Cần giữ đủ các file .py, app.ico và các file wms_bridge_* khi build.
+- Script build chạy kiểm thử, đóng gói EXE, mở thử app và kiểm thử tiện ích
+  với dữ liệu giả lập. Không sử dụng tài khoản hoặc gọi WMS thật.

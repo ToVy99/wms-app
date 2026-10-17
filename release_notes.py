@@ -2,22 +2,27 @@
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QDialog, QVBoxLayout, QTextBrowser, QPushButton, QMessageBox
 
-VERSION='3.4.2'
-TITLE='IntraCity 3.4.2'
-NOTES='''<h2>Có gì mới trong IntraCity 3.4.2?</h2>
+VERSION='3.4'
+RELEASE_ID='3.4-compact-bridge-20261017'
+TITLE='IntraCity 3.4'
+NOTES='''<h2>Có gì mới trong IntraCity 3.4?</h2>
 <ul>
-<li><b>Tìm SKU nhanh như tiện ích web:</b> tối đa 5 trang đơn và 6 SN tra Task đồng thời; bỏ khoảng nghỉ 300ms. Nút Dừng hủy các yêu cầu SKU đang chạy.</li>
-<li><b>Sửa tìm Task theo SKU:</b> xử lý danh sách rỗng, thử lại tối đa 2 lần và tiếp tục các SN còn lại khi lỗi như tiện ích web. Bỏ giới hạn 25 giây riêng cho tìm SKU; lỗi đăng nhập dừng ngay.</li>
-<li><b>Vừa màn hình laptop:</b> cửa sổ mở gọn theo vùng màn hình làm việc, không che góc phải hoặc góc dưới. Có thể phóng to khi cần; màn hình nhỏ có thanh cuộn để tới đầy đủ các mục.</li>
-<li><b>Tìm Task theo SKU:</b> nút ở góc phải thanh tab. Quét hoặc nhập SKU/UPC, bấm Enter để tìm đơn Picked và Picking Task trong 7 ngày gần nhất theo giờ Việt Nam.</li>
-<li><b>Copy mã rổ:</b> xem Task ID, Order Structure, Device ID/BSK, SKU Qty, Item Qty và số SN khớp. Copy từng task hoặc toàn bộ BSK không trùng.</li>
-<li><b>Giao diện đồng bộ:</b> công cụ mới theo chế độ sáng/tối. Chỉ gọi WMS khi tìm, chạy song song có giới hạn; có nút Dừng; thử lại có giới hạn như tiện ích web.</li>
+<li><b>Giao diện gọn hơn:</b> chuyển COT / Excel–Outbound lên giữa thanh trên cùng, tăng diện tích bảng đơn.</li>
+<li><b>Thu gọn thao tác:</b> gom các nút chọn đơn, bỏ chọn, Copy OBVN và Picking ID / BSK vào menu Thao tác. Đưa “Lưu Excel gốc” gần nút Tải dữ liệu.</li>
+<li><b>Giữ thống kê khu vực:</b> bỏ ô lọc Area, vẫn giữ cột Area và số lượng đơn từng khu để dễ so sánh.</li>
+<li><b>Trạng thái dễ nhìn hơn:</b> ẩn các ô Pick Fail, Pre Sorting và Pre Sorted. Các đơn này vẫn được tính trong tổng.</li>
+<li><b>Picked có mã rổ — tự loại trùng:</b> chỉ lấy mã rổ của đơn đang Picked, mỗi mã rổ hiển thị một lần.</li>
+<li><b>Hai cách kết nối WMS:</b> bấm “Đăng nhập WMS” để chọn mở Chrome riêng như trước hoặc dùng Chrome đang mở qua tiện ích kết nối. Mỗi lần tải chỉ sử dụng kết nối đang chọn.</li>
+<li><b>Thống kê nhỏ gọn:</b> giảm chiều cao các ô Tổng đơn, Outbound và Tỷ lệ, giữ số lớn và màu nổi bật.</li>
+<li><b>Tìm Task theo SKU nhanh hơn:</b> Kết hợp tool tìm mã rổ (WMS_SKU_Task_Finder) vs app.</li>
+<li><b>Dừng tìm khi cần:</b> nút Dừng hủy các yêu cầu tìm SKU đang chạy, không tiếp tục gửi lượt mới.</li>
 </ul>
-<p>Giữ nguyên mọi điều kiện hiện tại.</p>
-<p>Thông báo hiện khi mở phiên bản mới lần đầu. Bấm Đã hiểu để không hiện lại; dùng Xem thay đổi để mở lại khi cần.</p><p>Đỗ Rê Mon♥</p>'''
+<p>Giữ nguyên logic . Các thay đổi giao diện không làm thay đổi dữ liệu gốc.</p>
+<p><i>Thông báo hiện lần đầu khi mở phiên bản mới. Bấm “Đã hiểu” để đóng; mở lại bằng “Xem thay đổi”.</i></p>
+<p><b>Đỗ Rê Mon♥</b></p>'''
 
 def show_changes(window,save_config,automatic=False):
-    if automatic and window.config.get('seen_release')==VERSION:return
+    if automatic and window.config.get('seen_release_id')==RELEASE_ID:return
     existing=getattr(window,'_whats_new_dialog',None)
     if existing is not None and existing.isVisible():existing.raise_();return
     dialog=QDialog(window);window._whats_new_dialog=dialog
@@ -27,8 +32,12 @@ def show_changes(window,save_config,automatic=False):
     button=QPushButton('Đã hiểu');layout.addWidget(button);button.clicked.connect(dialog.accept)
     def acknowledge():
         previous=window.config.get('seen_release')
+        previous_id=window.config.get('seen_release_id')
         window.config['seen_release']=VERSION
+        window.config['seen_release_id']=RELEASE_ID
         if not save_config(window.config):
+            if previous_id is None:window.config.pop('seen_release_id',None)
+            else:window.config['seen_release_id']=previous_id
             if previous is None:window.config.pop('seen_release',None)
             else:window.config['seen_release']=previous
             QMessageBox.warning(window,'Chưa lưu được','Lần mở sau thông báo có thể xuất hiện lại vì chưa lưu được cấu hình.')

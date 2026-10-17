@@ -83,7 +83,7 @@ class NativeTests(unittest.TestCase):
         self.tab.search.setText('khong-ton-tai');self.assertEqual(self.tab.table.rowCount(),0)
         self.tab.search.clear();self.assertEqual(self.tab.table.rowCount(),2)
         self.tab.toggle_picked_baskets(True);self.tab.search.setText('pick-b');self.assertEqual(self.tab.table.rowCount(),0)
-        self.tab.search.setText('pick-a');self.assertEqual(self.tab.table.rowCount(),1)
+        self.tab.search.setText('pick-a');self.assertEqual(self.tab.table.rowCount(),4)
         self.tab.select_cot('2');self.assertEqual(self.tab.search.text(),'pick-a')
         self.assertEqual(calls,[])
     def test_exact_windows_and_year_rollover(self):
@@ -197,9 +197,9 @@ class NativeTests(unittest.TestCase):
         calls=[]; self.tab.request=lambda m,c:calls.append(m)
         self.tab.selected={'E'}; self.tab.active_area='OTHER'; self.tab.active_wave='OTHER'
         self.tab.basket_filter.click()
-        self.assertEqual([o['order_number'] for o in self.tab.visible()],['A','B'])
-        self.assertEqual(self.tab.table.item(0,4).text(),'BSK-A, BSK-A2')
-        self.assertEqual(self.tab.table.rowCount(),2); self.assertEqual(self.tab.basket_filter.text(),'Picked có mã rổ')
+        self.assertEqual([o['order_number'] for o in self.tab.visible()],['A','A','B'])
+        self.assertEqual(self.tab.table.item(0,4).text(),'BSK-A')
+        self.assertEqual(self.tab.table.rowCount(),3); self.assertEqual(self.tab.basket_filter.text(),'Picked có mã rổ')
         self.assertEqual(self.tab.selected,set()); self.tab.copy_obvn(); self.assertEqual(self.app.clipboard().text(),'A\nB')
         self.assertEqual(self.tab.total_card.value.text(),'5'); self.assertEqual(self.tab.outbound_card.value.text(),'1'); self.assertEqual(self.tab.percent_card.value.text(),'20.0%')
         self.tab.basket_filter.click(); self.assertEqual(self.tab.table.rowCount(),4)
@@ -215,7 +215,7 @@ class NativeTests(unittest.TestCase):
             self.tab.orders=[dict(order_status=status,bsks=set(),area='-',wave_type='-',order_number=str(i),sns=set(),ctime_text='',cutoff_text='') for i,status in enumerate(statuses)]
             self.tab.render_all(); self.app.processEvents()
             self.assertEqual(self.tab.status_panel.height(),height)
-            self.assertEqual(self.tab.status_row.count(),16)
+            self.assertEqual(self.tab.status_row.count(),13)
             for code,button in buttons.items():
                 self.assertIs(self.tab.status_buttons[code],button)
                 self.assertEqual(self.tab.status_row.getItemPosition(self.tab.status_row.indexOf(button)),slots[code])

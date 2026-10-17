@@ -70,7 +70,7 @@ class SlidingOrders(QWidget):
     positionChanged=Signal(int)
     def __init__(self,config,save_config,parent=None):
         super().__init__(parent)
-        self.config=config;self.save_config=save_config;self.upper_height=228
+        self.config=config;self.save_config=save_config;self.upper_height=204
         saved=config.get('cot_panel_reveal',self.upper_height)
         self.reveal=max(0,min(self.upper_height,saved)) if isinstance(saved,int) else self.upper_height
         self.expanded_reveal=self.reveal or self.upper_height

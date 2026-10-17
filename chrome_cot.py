@@ -15,7 +15,7 @@ from pathlib import Path
 from urllib.parse import urlsplit
 
 from PySide6.QtCore import QObject, QThread, Signal, Slot, QTimer, QDate, Qt
-from PySide6.QtWidgets import (QApplication, QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QLabel, QComboBox, QDateEdit, QTableWidget, QTableWidgetItem, QAbstractItemView, QHeaderView, QDialog, QDialogButtonBox, QTimeEdit, QLineEdit, QTextEdit, QMessageBox, QGridLayout, QFrame, QProgressBar, QSizePolicy, QFileDialog)
+from PySide6.QtWidgets import (QApplication, QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QLabel, QComboBox, QDateEdit, QTableWidget, QTableWidgetItem, QAbstractItemView, QHeaderView, QDialog, QDialogButtonBox, QTimeEdit, QLineEdit, QTextEdit, QMessageBox, QGridLayout, QFrame, QProgressBar, QSizePolicy, QFileDialog, QMenu)
 from playwright.sync_api import sync_playwright
 from cot_logic import DEFAULT_CONFIG, time_range, export_body, choose_job, parse_report, status_name, progress, URL_EXPORT_LIST, URL_EXPORT, URL_ORDER
 from cot_widgets import CopyTable, SlidingOrders, LoadingSpinner
@@ -229,16 +229,35 @@ class NativeBridge(QObject):
         self.save_config = save_config
         self.worker = None
         self.connected = False
+        self.mode='chrome'; self.workers={}; self.states={}; self.inflight=set()
 
     def connect_chrome(self):
-        if self.worker and self.worker.isRunning():
-            self.sessionChanged.emit(self.connected, 'Chrome đang mở · Bạn có thể đổi kho trực tiếp trong Chrome.')
-            return
-        self.worker = ChromeWorker()
-        self.worker.result.connect(self.completed)
-        self.worker.skuProgress.connect(self.skuProgress)
-        self.worker.state.connect(self._state)
-        self.worker.start()
+        self._connect_mode('chrome',ChromeWorker)
+
+    def connect_extension(self):
+        from extension_bridge import ExtensionWorker
+        self._connect_mode('extension',ExtensionWorker)
+
+    def _connect_mode(self,mode,factory):
+        if self.inflight:
+            self.sessionChanged.emit(self.connected,'Đang có tác vụ WMS; hãy chờ hoàn tất trước khi đổi kết nối.');return
+        worker=self.workers.get(mode)
+        if worker is None or not worker.isRunning():
+            worker=factory(); self.workers[mode]=worker;self.states[mode]=(False,'Đang mở kết nối…')
+            worker.result.connect(self._completed)
+            worker.skuProgress.connect(self.skuProgress)
+            worker.state.connect(lambda connected,message,m=mode,w=worker:self._worker_state(m,w,connected,message))
+            worker.start()
+        self.mode=mode;self.worker=worker
+        self._state(*self.states[mode])
+
+    def _worker_state(self,mode,worker,connected,message):
+        if self.workers.get(mode) is not worker:return
+        self.states[mode]=(connected,message)
+        if self.mode==mode:self._state(connected,message)
+
+    def _completed(self,rid,raw):
+        self.inflight.discard(rid);self.completed.emit(rid,raw)
 
     @Slot(bool, str)
     def _state(self, connected, message):
@@ -269,6 +288,7 @@ class NativeBridge(QObject):
                 raise RuntimeError('Bấm Đăng nhập WMS, đăng nhập và chọn kho trong Chrome trước.')
             if self.worker.commands.qsize() >= 20:
                 raise RuntimeError('Đang có tác vụ WMS; chờ tác vụ hiện tại hoàn tất.')
+            self.inflight.add(request_id)
             self.worker.enqueue(request_id, msg)
         except Exception as exc:
             self.completed.emit(request_id, json.dumps({'success':False,'error':str(exc)}, ensure_ascii=False))
@@ -277,11 +297,14 @@ class NativeBridge(QObject):
         if self.worker:self.worker.cancel_sku(request_id)
 
     def stop(self, timeout=1500):
-        if self.worker and self.worker.isRunning():
-            self.worker.cancel_all_sku()
-            self.worker.requestInterruption()
-            return self.worker.wait(timeout)
-        return True
+        workers=set(self.workers.values())
+        if self.worker:workers.add(self.worker)
+        for worker in workers:
+            if worker.isRunning():worker.cancel_all_sku();worker.requestInterruption()
+        ok=True
+        for worker in workers:
+            if worker.isRunning():ok=worker.wait(timeout) and ok
+        return ok
 
 class ReportParser(QThread):
     ready = Signal(object)
@@ -300,18 +323,18 @@ class MetricCard(QFrame):
         super().__init__(parent)
         self.setObjectName('metricCard')
         self.setProperty('preserveThemeColors',True)
-        self.setFixedHeight(92)
+        self.setFixedHeight(76)
         self.setStyleSheet(f'QFrame#metricCard {{background:qlineargradient(x1:0,y1:0,x2:1,y2:1,stop:0 {start},stop:1 {end}); border:2px solid {accent}; border-radius:14px;}} QLabel {{border:0; background:transparent;}}')
-        self.box=layout=QVBoxLayout(self); layout.setContentsMargins(12,5,12,5); layout.setSpacing(3)
+        self.box=layout=QVBoxLayout(self); layout.setContentsMargins(12,5,12,5); layout.setSpacing(1)
         caption=QLabel(title); caption.setStyleSheet('color:#ffffff; font-size:12px; font-weight:800;')
-        self.value=QLabel('0'); self.value.setStyleSheet('color:#ffffff; font-size:30px; font-weight:900;')
+        self.value=QLabel('0'); self.value.setStyleSheet('color:#ffffff; font-size:26px; font-weight:900;')
         self.note=QLabel(); self.note.setStyleSheet('color:#e2edff; font-size:11px;')
         layout.addWidget(caption); layout.addWidget(self.value); layout.addWidget(self.note)
 
 class StatusButton(QPushButton):
     def __init__(self, label, count, parent=None):
         super().__init__(parent)
-        self.setCheckable(True); self.setMinimumHeight(40); self.setMinimumWidth(88)
+        self.setCheckable(True); self.setMinimumHeight(36); self.setMinimumWidth(72)
         self.label=label
         self.setAccessibleName(f'{label} ({count})')
         self.setStyleSheet('QPushButton {background:#292b3f; border:1px solid #484b65; border-radius:8px;} QPushButton:hover {background:#363951;} QPushButton:checked {background:#3b3528; border:2px solid #ff9d37;} QPushButton:disabled {background:#232436;}')
@@ -371,8 +394,11 @@ class ChromeCotTab(QWidget):
         self.loading_stage=QLabel(); self.loading_stage.setFixedWidth(100); self.loading_stage.setWordWrap(True)
         self.loading_stage.setStyleSheet('font-size:11px; color:#89b4fa; font-weight:600;')
         indicator.addWidget(self.loading_stage); self.loading_indicator.hide()
-        self.settings=QPushButton('Khung giờ'); self.settings.clicked.connect(self.open_settings)
-        for w in (QLabel('Nhóm'),self.carrier,QLabel('Ngày'),self.date,self.load,self.loading_indicator,self.settings): top.addWidget(w)
+        self.settings=QPushButton('⋯'); self.settings.setToolTip('Khung giờ COT'); self.settings.setFixedWidth(30); self.settings.setStyleSheet('padding:1px; font-size:18px;'); self.settings.clicked.connect(self.open_settings)
+        self.carrier.setMinimumWidth(95); self.date.setFixedWidth(105)
+        self.save_report=QPushButton('Lưu Excel gốc'); self.save_report.setEnabled(False); self.save_report.clicked.connect(self.save_original_report)
+        for w in (self.carrier,self.date,self.load,self.save_report,self.settings): top.addWidget(w)
+        left.addWidget(self.loading_indicator)
         top.addStretch()
         self.cot_row=QGridLayout(); left.addLayout(self.cot_row); self.cot_buttons=[]; self.cot_id=None
         self.range_label=QLabel(); self.range_label.setWordWrap(True); left.addWidget(self.range_label)
@@ -382,23 +408,23 @@ class ChromeCotTab(QWidget):
         self.outbound_card=MetricCard('ĐƠN OUTBOUND','#087f83','#104350','#4fffd2')
         self.outbound_card.note.setText('Đã hoàn thành Outbound')
         self.percent_card=MetricCard('TỶ LỆ OUTBOUND','#8928bd','#39256b','#ec9cff')
-        self.percent_card.value.setStyleSheet('background:transparent; border:0; color:#ffffff; font-size:32px; font-weight:900;')
+        self.percent_card.value.setStyleSheet('background:transparent; border:0; color:#ffffff; font-size:28px; font-weight:900;')
         self.outbound_progress=QProgressBar(); self.outbound_progress.setRange(0,1000); self.outbound_progress.setTextVisible(False); self.outbound_progress.setFixedHeight(7)
         self.outbound_progress.setStyleSheet('QProgressBar {background:#251943; border:0; border-radius:3px;} QProgressBar::chunk {background:#86ffdd; border-radius:3px;}')
         self.percent_card.box.addWidget(self.outbound_progress)
         for card in (self.total_card,self.outbound_card,self.percent_card): metrics.addWidget(card,1)
         self.summary=QLabel(); self.summary.setStyleSheet('color:#c4c9df;'); left.addWidget(self.summary)
         left.addStretch()
-        self.status_panel=QFrame(); self.status_panel.setMinimumWidth(390); self.status_panel.setFixedHeight(228)
+        self.status_panel=QFrame(); self.status_panel.setMinimumWidth(340); self.status_panel.setFixedHeight(204)
         self.status_panel.setStyleSheet('QFrame {background:#202132; border:1px solid #393c52; border-radius:10px;}')
         right=QVBoxLayout(self.status_panel); right.setContentsMargins(10,8,10,8); right.setSpacing(6)
         title=QLabel('TRẠNG THÁI · BẤM ĐỂ XEM ĐƠN'); title.setStyleSheet('border:0; color:#c4c9df; font-size:11px; font-weight:700;'); right.addWidget(title)
-        self.status_row=QGridLayout(); self.status_row.setSpacing(6); right.addLayout(self.status_row); right.addStretch()
+        self.status_row=QGridLayout(); self.status_row.setSpacing(4); right.addLayout(self.status_row); right.addStretch()
         self.status_buttons={}
         # Keep every status in a stable slot, including zero counts.
-        for ix,code in enumerate([None,3,14,0,1,2,5,6,4,7,8,9,10,11,12,13]):
+        for ix,code in enumerate([None,3,14,0,1,2,5,6,9,10,11,12,13]):
             button=StatusButton('Tổng' if code is None else status_name(code),0)
-            button.setFixedHeight(43)
+            button.setFixedHeight(37)
             button.clicked.connect(lambda _,s=code: self.select_status(s))
             self.status_buttons[code]=button
             self.status_row.addWidget(button,ix//4,ix%4)
@@ -406,7 +432,8 @@ class ChromeCotTab(QWidget):
         filters=QHBoxLayout(); lower.addLayout(filters)
         self.area=QComboBox(); self.wave=QComboBox()
         self.area.setMinimumWidth(110); self.wave.setMinimumWidth(120)
-        filters.addWidget(QLabel('Area')); filters.addWidget(self.area); filters.addWidget(QLabel('Wave Type')); filters.addWidget(self.wave)
+        self.area.hide()  # Keep the data model; only the Area picker is removed.
+        filters.addWidget(QLabel('Wave Type')); filters.addWidget(self.wave)
         self.basket_filter=QPushButton('Picked có mã rổ'); self.basket_filter.setCheckable(True)
         self.basket_filter.setStyleSheet('QPushButton {font-weight:700;} QPushButton:checked {background:#24483d; border:2px solid #69e6b2; color:#94f7d0;}')
         self.basket_filter.clicked.connect(self.toggle_picked_baskets); filters.addWidget(self.basket_filter)
@@ -423,11 +450,11 @@ class ChromeCotTab(QWidget):
         self.area_summary.setStyleSheet('color:#a4e7ff; background:#202d42; border:1px solid #3d597c; border-radius:7px; padding:4px; font-weight:700;')
         self.area_summary.setToolTip('Đếm đơn theo trạng thái và bộ lọc mã rổ đang chọn, trước lọc khu/Wave/tìm kiếm. Một đơn có nhiều khu được tính một lần ở mỗi khu; tổng các khu có thể lớn hơn số đơn.')
         lower.addWidget(self.area_summary)
-        actions=QHBoxLayout(); lower.addLayout(actions)
+        self.actions_button=QPushButton('Thao tác ▾'); self.actions_menu=QMenu(self)
         for label,fn in [('Chọn các đơn đang hiện',self.select_visible),('Bỏ chọn',self.clear_selection),('Copy OBVN',self.copy_obvn),('Picking ID / BSK',self.show_tasks)]:
-            b=QPushButton(label); b.clicked.connect(fn); actions.addWidget(b)
-        self.visible_label=QLabel(); actions.addWidget(self.visible_label); actions.addStretch()
-        self.save_report=QPushButton('Lưu Excel gốc'); self.save_report.setEnabled(False); self.save_report.clicked.connect(self.save_original_report); actions.addWidget(self.save_report)
+            self.actions_menu.addAction(label,fn)
+        self.actions_button.setMenu(self.actions_menu); filters.addWidget(self.actions_button)
+        self.visible_label=QLabel(); filters.addWidget(self.visible_label)
         self.table=CopyTable(0,10); self.table.setHorizontalHeaderLabels(['Chọn','OBVN','Order SN','Trạng thái','Mã rổ / BSK','Area','SKU Name','Create Time','Cut off Time','Picking ID'])
         self.table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers); self.table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectItems)
         self.table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Interactive)
@@ -586,7 +613,20 @@ class ChromeCotTab(QWidget):
         def matches(order):
             text=self.order_search_text(order) if terms else ''
             return all(term in text for term in terms)
-        return [o for o in self.status_orders() if (self.active_area is None or self.active_area in self.area_groups(o)) and (self.active_wave is None or (o['wave_type'] or '-')==self.active_wave) and matches(o)]
+        rows=[o for o in self.status_orders() if (self.active_area is None or self.active_area in self.area_groups(o)) and (self.active_wave is None or (o['wave_type'] or '-')==self.active_wave) and matches(o)]
+        if not self.picked_baskets_only:return rows
+        baskets={}
+        for order in rows:
+            for code in self.basket_codes(order):baskets.setdefault(code,[]).append(order)
+        result=[]
+        for code,source in baskets.items():
+            row=dict(source[0]);row['_source_orders']=source;row['_row_key']='basket:'+code
+            row['bsks']={code}
+            for field in ('sns','picking','sku_names'):row[field]=set().union(*(o.get(field,set()) for o in source))
+            for field in ('order_number','area','ctime_text','cutoff_text'):
+                row[field]=', '.join(dict.fromkeys(str(o.get(field,'')) for o in source))
+            result.append(row)
+        return result
 
     @staticmethod
     def area_groups(order):
@@ -687,7 +727,7 @@ class ChromeCotTab(QWidget):
         self.picked_baskets_only=bool(checked); self.active_status=3
         self.active_area=self.active_wave=None; self.selected.clear()
         self.render_all()
-        self.message.setText(('Đang lọc Picked có mã rổ' if checked else 'Đang hiện tất cả đơn Picked')+f' · {len(self.visible())} đơn · từ dữ liệu đã tải')
+        self.message.setText(('Đang lọc Picked có mã rổ' if checked else 'Đang hiện tất cả đơn Picked')+f' · {len(self.visible())} '+('mã rổ không trùng' if checked else 'đơn')+' · từ dữ liệu đã tải')
 
     def filter_changed(self,*_):
         self.active_area=self.area.currentData(); self.active_wave=self.wave.currentData(); self.selected.clear(); self.render_table()
@@ -697,11 +737,11 @@ class ChromeCotTab(QWidget):
         rows=self.visible(); self.table.clearSelection(); self.table.setRowCount(len(rows))
         for i,o in enumerate(rows):
             cb=QTableWidgetItem(); cb.setFlags(Qt.ItemFlag.ItemIsEnabled|Qt.ItemFlag.ItemIsUserCheckable)
-            cb.setData(Qt.ItemDataRole.UserRole,o['order_number']); cb.setCheckState(Qt.CheckState.Checked if o['order_number'] in self.selected else Qt.CheckState.Unchecked); self.table.setItem(i,0,cb)
+            cb.setData(Qt.ItemDataRole.UserRole,o.get('_row_key',o['order_number'])); cb.setCheckState(Qt.CheckState.Checked if o.get('_row_key',o['order_number']) in self.selected else Qt.CheckState.Unchecked); self.table.setItem(i,0,cb)
             for j,value in enumerate([o['order_number'],', '.join(sorted(o['sns'])),status_name(o['order_status']),', '.join(self.basket_codes(o)) if str(o['order_status'])=='3' else '',o['area'],'; '.join(sorted(o.get('sku_names',()))),o['ctime_text'],o['cutoff_text'],', '.join(sorted(o.get('picking',())))],1):
                 item=QTableWidgetItem(str(value)); item.setToolTip(str(value)); self.table.setItem(i,j,item)
         self.table.setUpdatesEnabled(True); self.table.blockSignals(False)
-        self.visible_label.setText(f'Hiện {len(rows)} · Chọn {len(self.selected)}')
+        self.visible_label.setText(f"Hiện {len(rows)} {'rổ' if self.picked_baskets_only else 'đơn'} · Chọn {len(self.selected)}")
 
     def check_changed(self,item):
         if item.column()!=0:return
@@ -711,12 +751,17 @@ class ChromeCotTab(QWidget):
         self.visible_label.setText(f'Hiện {self.table.rowCount()} · Chọn {len(self.selected)}')
 
     def select_visible(self):
-        self.selected.update(o['order_number'] for o in self.visible()); self.render_table()
+        self.selected.update(o.get('_row_key',o['order_number']) for o in self.visible()); self.render_table()
     def clear_selection(self): self.selected.clear(); self.render_table()
     def target_orders(self):
-        checked=[o for o in self.orders if o['order_number'] in self.selected]
-        rows=self.visible(); cell_rows=sorted({i.row() for i in self.table.selectedIndexes()})
-        return checked or [rows[i] for i in cell_rows if i<len(rows)] or rows
+        rows=self.visible()
+        checked=[o for o in rows if o.get('_row_key',o['order_number']) in self.selected]
+        cell_rows=sorted({i.row() for i in self.table.selectedIndexes()})
+        targets=checked or [rows[i] for i in cell_rows if i<len(rows)] or rows
+        unique={}
+        for row in targets:
+            for order in row.get('_source_orders',[row]):unique[order['order_number']]=order
+        return list(unique.values())
     def copy_obvn(self): QApplication.clipboard().setText('\n'.join(o['order_number'] for o in self.target_orders()))
 
     def save_original_report(self):

@@ -18,7 +18,7 @@ from PySide6.QtWidgets import (
     QApplication, QWidget, QPushButton, QLabel, QListWidget,
     QTableView, QFileDialog, QMessageBox, QVBoxLayout, QHBoxLayout,
     QLineEdit, QHeaderView, QCheckBox, QComboBox, QFrame, QProgressDialog,
-    QTabWidget, QButtonGroup, QDateEdit, QScrollArea, QSizePolicy, QLayout
+    QTabBar, QMenu, QTabWidget, QButtonGroup, QDateEdit, QScrollArea, QSizePolicy, QLayout
 )
 
 from PySide6.QtCore import Qt, QThread, Signal, QTimer, QEvent, QAbstractTableModel, QModelIndex, QDate
@@ -913,17 +913,27 @@ del /F /Q "{backup_exe}" >nul 2>&1
 
         # ===== Thanh WMS dùng chung =====
         global_top = QHBoxLayout()
+        global_top.setSpacing(6)
+        header_left=QWidget()
+        left_header=QHBoxLayout(header_left); left_header.setContentsMargins(0,0,0,0); left_header.setSpacing(4)
+        header_right=QWidget(); right_header=QHBoxLayout(header_right); right_header.setContentsMargins(0,0,0,0); right_header.setSpacing(4)
+        global_top.addWidget(header_left,1)
+        self.topTabs=QTabBar(); self.topTabs.addTab('⚡ COT'); self.topTabs.addTab('📊 Excel / Outbound')
+        self.topTabs.setExpanding(False); self.topTabs.setMinimumWidth(230); global_top.addWidget(self.topTabs,0,Qt.AlignCenter)
+        global_top.addWidget(header_right,1,Qt.AlignRight)
 
         self.btnLoginWMS = QPushButton("🔑 Đăng nhập WMS")
         self.btnLoginWMS.setObjectName("btnLoginWMS")
         self.lblWMSState = QLabel(
-            "⚪ Chưa kết nối Chrome WMS"
+            "⚪ Chưa kết nối"
         )
         self.lblWMSState.setStyleSheet("color: #a6adc8; font-weight: 600;")
 
-        global_top.addWidget(self.btnLoginWMS)
-        self.lblWMSState.setWordWrap(True)
-        global_top.addWidget(self.lblWMSState)
+        left_header.addWidget(self.btnLoginWMS)
+        self.lblWMSState.setWordWrap(False)
+        self.lblWMSState.setStyleSheet("font-size:11px;")
+        self.lblWMSState.setMaximumWidth(110)
+        left_header.addWidget(self.lblWMSState)
         root.addLayout(global_top)
 
         # ===== Banner trạng thái dùng chung =====
@@ -932,25 +942,28 @@ del /F /Q "{backup_exe}" >nul 2>&1
         banner_inner = QHBoxLayout(self.statusBanner)
         banner_inner.setContentsMargins(10, 4, 10, 4)
 
-        self.lblGifIcon = QLabel()
+        self.lblGifIcon = QLabel(); self.lblGifIcon.hide()
         self.lblStatusMsg = QLabel("Sẵn sàng làm việc!")
 
         self.statusBanner.setStyleSheet("background-color: #313244; border-radius: 6px;")
-        self.lblStatusMsg.setStyleSheet("font-size: 13px; font-weight: bold; color: #cdd6f4;")
+        self.lblStatusMsg.setStyleSheet("font-size: 11px; font-weight: bold; color: #cdd6f4;")
 
         banner_inner.addWidget(self.lblGifIcon)
         banner_inner.addWidget(self.lblStatusMsg)
-        global_top.addSpacing(4)
-        self.lblStatusMsg.setWordWrap(True)
-        global_top.addWidget(self.statusBanner)
-        global_top.addStretch()
-        global_top.addWidget(QLabel('Giao diện'))
+        left_header.addSpacing(2)
+        self.lblStatusMsg.setWordWrap(False)
+        self.lblStatusMsg.setSizePolicy(QSizePolicy.Ignored,QSizePolicy.Preferred)
+        self.statusBanner.setFixedHeight(32)
+        self.statusBanner.setFixedWidth(140)
+        left_header.addWidget(self.statusBanner)
+
         self.themeChoice=QComboBox()
         for title,mode in [('Theo máy','system'),('Sáng','light'),('Tối','dark')]:self.themeChoice.addItem(title,mode)
         self.themeChoice.setToolTip('Theo máy tự chuyển theo giao diện Windows; lựa chọn được lưu cho lần mở sau.')
-        global_top.addWidget(self.themeChoice)
+        self.themeChoice.setFixedWidth(85)
+        right_header.addWidget(self.themeChoice)
         self.changes_button=QPushButton('Xem thay đổi'); self.changes_button.clicked.connect(lambda:show_changes(self,save_config))
-        global_top.addWidget(self.changes_button)
+        right_header.addWidget(self.changes_button)
 
         self.anim_timer = QTimer(self)
         self.anim_timer.timeout.connect(self._update_loading_animation)
@@ -962,9 +975,12 @@ del /F /Q "{backup_exe}" >nul 2>&1
         # ===== Tabs chính =====
         self.mainTabs = QTabWidget()
         root.addWidget(self.mainTabs, 1)
-        self.btnSkuTask=QPushButton('🧺 Tìm Task theo SKU')
+        self.btnSkuTask=QPushButton('🧺 Tìm SKU')
         self.btnSkuTask.setToolTip('Tra đơn Picked và Picking Task từ SKU/UPC, dùng phiên Chrome WMS hiện tại.')
-        self.mainTabs.setCornerWidget(self.btnSkuTask,Qt.TopRightCorner)
+        right_header.addWidget(self.btnSkuTask)
+        self.mainTabs.tabBar().hide()
+        self.topTabs.currentChanged.connect(self.mainTabs.setCurrentIndex)
+        self.mainTabs.currentChanged.connect(self.topTabs.setCurrentIndex)
         self.btnSkuTask.clicked.connect(self.open_sku_finder)
 
         # ==============================================================
@@ -1141,7 +1157,10 @@ del /F /Q "{backup_exe}" >nul 2>&1
 
         self.mainTabs.addTab(self.excelTab, "📊 Excel / Outbound")
 
-        self.btnLoginWMS.clicked.connect(self.cotTab.bridge.connect_chrome)
+        self.connection_menu=QMenu(self)
+        self.connection_menu.addAction('Mở Chrome riêng / Đăng nhập WMS',lambda:self.choose_wms_connection('chrome'))
+        self.connection_menu.addAction('Dùng Chrome đang mở qua tiện ích',lambda:self.choose_wms_connection('extension'))
+        self.btnLoginWMS.setMenu(self.connection_menu)
 
         # ===== Signal Excel hiện có =====
         self.btnClipboard.clicked.connect(self.load_clipboard)
@@ -1169,9 +1188,20 @@ del /F /Q "{backup_exe}" >nul 2>&1
         shortcut_select_all = QShortcut(QKeySequence.SelectAll, self.table)
         shortcut_select_all.activated.connect(self.table.selectAll)
 
+    def choose_wms_connection(self,mode):
+        if self.cotTab.busy or (self.sku_dialog and self.sku_dialog.searcher.busy):
+            QMessageBox.information(self,'Đang tải','Hãy đợi tải COT hoàn tất hoặc dừng tìm SKU trước khi đổi kết nối.');return
+        if mode=='chrome':self.cotTab.bridge.connect_chrome()
+        else:
+            from extension_bridge import show_extension_setup
+            show_extension_setup(self,self.cotTab.bridge)
+
     def _chrome_session_changed(self, connected, message):
-        self.lblWMSState.setText("🟢 Chrome WMS đang mở" if connected else "⚪ Chrome WMS chưa kết nối")
-        self.set_banner_status(False, success=connected, custom_msg=message)
+        mode='Tiện ích Chrome' if self.cotTab.bridge.mode=='extension' else 'Chrome riêng'
+        self.lblWMSState.setText(('🟢 ' if connected else '⚪ ')+mode)
+        self.lblWMSState.setToolTip(message)
+        self.set_banner_status(False, success=connected, custom_msg=("Đã kết nối WMS" if connected else "Chưa kết nối"))
+        self.statusBanner.setToolTip(message)
 
     def update_bottom_status_bar(self):
         df = self.table_model._data
@@ -1242,7 +1272,7 @@ del /F /Q "{backup_exe}" >nul 2>&1
     def set_banner_status(self, is_loading=False, success=True, custom_msg=""):
         if is_loading:
             self.statusBanner.setStyleSheet("background-color: #45475a; border-radius: 6px;")
-            self.lblStatusMsg.setStyleSheet("font-size: 13px; font-weight: bold; color: #f9e2af;")
+            self.lblStatusMsg.setStyleSheet("font-size: 11px; font-weight: bold; color: #f9e2af;")
             self.dots_count = 0
             self._loading_message = custom_msg or "Đang xử lý dữ liệu..."
             self.lblStatusMsg.setText(self._loading_message)
@@ -1265,12 +1295,13 @@ del /F /Q "{backup_exe}" >nul 2>&1
 
             if success:
                 self.statusBanner.setStyleSheet("background-color: #2e3c38; border-radius: 6px;")
-                self.lblStatusMsg.setStyleSheet("font-size: 13px; font-weight: bold; color: #a6e3a1;")
+                self.lblStatusMsg.setStyleSheet("font-size: 11px; font-weight: bold; color: #a6e3a1;")
                 self.lblStatusMsg.setText(custom_msg if custom_msg else "✅ Đã tải dữ liệu thành công!")
             else:
                 self.statusBanner.setStyleSheet("background-color: #442a38; border-radius: 6px;")
-                self.lblStatusMsg.setStyleSheet("font-size: 13px; font-weight: bold; color: #f38ba8;")
+                self.lblStatusMsg.setStyleSheet("font-size: 11px; font-weight: bold; color: #f38ba8;")
                 self.lblStatusMsg.setText(custom_msg if custom_msg else "❌ Lỗi đọc dữ liệu!")
+        self.statusBanner.setToolTip(self.lblStatusMsg.text())
         if hasattr(self,'theme_controller'):self.theme_controller.apply()
 
     def _update_loading_animation(self):
@@ -1325,7 +1356,7 @@ del /F /Q "{backup_exe}" >nul 2>&1
         self.lblSelectedDetail.setText("💡 Chi tiết đơn: Click vào dòng để xem")
 
         self.statusBanner.setStyleSheet("background-color: #313244; border-radius: 6px;")
-        self.lblStatusMsg.setStyleSheet("font-size: 13px; font-weight: bold; color: #cdd6f4;")
+        self.lblStatusMsg.setStyleSheet("font-size: 11px; font-weight: bold; color: #cdd6f4;")
         self.lblStatusMsg.setText("🔄 Đã làm mới bảng làm việc.")
         if hasattr(self,'theme_controller'):self.theme_controller.apply()
 
