@@ -1,0 +1,8 @@
+.venv-build/
+__pycache__/
+build/
+dist/
+*.spec
+wms_config.json
+smoke-test-result.json
+smoke-gui.png
