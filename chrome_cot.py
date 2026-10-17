@@ -479,6 +479,11 @@ class ChromeCotTab(QWidget):
         self.date.dateChanged.connect(self.scope_changed)
         self.fill_cots()
 
+    def resizeEvent(self,event):
+        super().resizeEvent(event)
+        # On narrow laptops keep only the spinner; the full stage stays in its tooltip.
+        if hasattr(self,'loading_stage'):self.loading_stage.setVisible(self.width()>=1050)
+
     @staticmethod
     def empty_row(row):
         while row.count():
