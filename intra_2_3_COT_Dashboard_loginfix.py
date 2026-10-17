@@ -919,7 +919,8 @@ del /F /Q "{backup_exe}" >nul 2>&1
         header_right=QWidget(); right_header=QHBoxLayout(header_right); right_header.setContentsMargins(0,0,0,0); right_header.setSpacing(4)
         global_top.addWidget(header_left,1)
         self.topTabs=QTabBar(); self.topTabs.addTab('⚡ COT'); self.topTabs.addTab('📊 Excel / Outbound')
-        self.topTabs.setExpanding(False); self.topTabs.setMinimumWidth(230); global_top.addWidget(self.topTabs,0,Qt.AlignCenter)
+        self.topTabs.setStyleSheet('QTabBar::tab {padding:6px 8px; font-size:12px;}')
+        self.topTabs.setExpanding(False); self.topTabs.setMinimumWidth(210); global_top.addWidget(self.topTabs,0,Qt.AlignCenter)
         global_top.addWidget(header_right,1,Qt.AlignRight)
 
         self.btnLoginWMS = QPushButton("🔑 Đăng nhập WMS")
@@ -960,7 +961,7 @@ del /F /Q "{backup_exe}" >nul 2>&1
         self.themeChoice=QComboBox()
         for title,mode in [('Theo máy','system'),('Sáng','light'),('Tối','dark')]:self.themeChoice.addItem(title,mode)
         self.themeChoice.setToolTip('Theo máy tự chuyển theo giao diện Windows; lựa chọn được lưu cho lần mở sau.')
-        self.themeChoice.setFixedWidth(85)
+        self.themeChoice.setFixedWidth(95)
         right_header.addWidget(self.themeChoice)
         self.changes_button=QPushButton('Xem thay đổi'); self.changes_button.clicked.connect(lambda:show_changes(self,save_config))
         right_header.addWidget(self.changes_button)

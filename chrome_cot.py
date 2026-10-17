@@ -395,7 +395,7 @@ class ChromeCotTab(QWidget):
         self.loading_stage.setStyleSheet('font-size:11px; color:#89b4fa; font-weight:600;')
         indicator.addWidget(self.loading_stage); self.loading_indicator.hide()
         self.settings=QPushButton('⋯'); self.settings.setToolTip('Khung giờ COT'); self.settings.setFixedWidth(30); self.settings.setStyleSheet('padding:1px; font-size:18px;'); self.settings.clicked.connect(self.open_settings)
-        self.carrier.setMinimumWidth(95); self.date.setFixedWidth(105)
+        self.carrier.setMinimumWidth(95); self.date.setFixedWidth(120)
         self.save_report=QPushButton('Lưu Excel gốc'); self.save_report.setEnabled(False); self.save_report.clicked.connect(self.save_original_report)
         for w in (self.carrier,self.date,self.load,self.save_report,self.settings): top.addWidget(w)
         left.addWidget(self.loading_indicator)

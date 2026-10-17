@@ -48,14 +48,15 @@ async function connect(tabId){
 }
 chrome.runtime.onMessage.addListener((message,sender,reply)=>{
   // Only this extension's popup may pick the session. Content frames only return results.
-  if(sender.tab){
+  const fromPopup=sender.id===chrome.runtime.id&&sender.url===chrome.runtime.getURL('popup.html');
+  if(sender.tab&&!fromPopup){
     if(sender.tab.id!==selectedTab||sender.frameId!==0||sender.origin!=='https://wms.ssc.shopee.vn'||!active.has(message.id)){reply({ok:false});return;}
     if(['progress','result_start','result_chunk','result_end'].includes(message.kind)){
       send(message);if(message.kind==='result_end')active.delete(message.id);reply({ok:true});
     }else reply({ok:false});
     return;
   }
-  if(sender.id!==chrome.runtime.id){reply({ok:false});return;}
+  if(!fromPopup){reply({ok:false});return;}
   if(message.kind==='status'){reply(status());return;}
   if(message.kind==='connect'){connect(Number(message.tabId)).then(()=>reply(status())).catch(e=>{lastError=e.message;reply(status());});return true;}
   if(message.kind==='disconnect'){disconnect().then(()=>reply(status()));return true;}

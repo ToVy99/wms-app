@@ -45,17 +45,22 @@ with tempfile.TemporaryDirectory() as td:
             context.route('https://wms.ssc.shopee.vn/**',route)
             context.add_cookies([{'name':'fixture_session','value':'fixture-only','domain':'wms.ssc.shopee.vn','path':'/','secure':True}])
             page=context.new_page();page.goto('https://wms.ssc.shopee.vn/home')
-            popup=context.new_page();popup.goto('chrome-extension://'+EXTENSION_ID+'/popup.html');popup.locator('#tabs option').wait_for(state='attached');popup.locator('#connect').click()
+            popup=context.new_page();popup.goto('chrome-extension://'+EXTENSION_ID+'/popup.html');popup.locator('#tabs option').wait_for(state='attached')
+            assert popup.locator('#tabs').input_value(),popup.locator('#tabs').inner_text()
+            print('Extension fixture: selecting existing WMS tab',flush=True);popup.locator('#connect').click()
             def wait(predicate,seconds=30):
                 end=time.monotonic()+seconds
                 while not predicate() and time.monotonic()<end:app.processEvents();popup.wait_for_timeout(50)
                 assert predicate(),{'states':states,'popup':popup.locator('#state').inner_text(),'results':list(results)}
             wait(lambda:any(ok for ok,text in states))
+            print('Extension fixture: native host connected',flush=True)
             worker.enqueue('cot',{'type':'WMS_GET','url':URL_EXPORT_LIST});wait(lambda:'cot' in results)
             assert results['cot']=={'success':True,'data':{'total':2112}},results['cot']
+            print('Extension fixture: COT response passed',flush=True)
             worker.enqueue('download',{'type':'WMS_DOWNLOAD','url':'https://wms.ssc.shopee.vn/oss_downloads_v2/fixture.zip'});wait(lambda:'download' in results)
             import base64
             assert base64.b64decode(results['download']['data'])==blob
+            print('Extension fixture: chunked report passed',flush=True)
             worker.enqueue('sku-fixture',{'type':'WMS_SKU_SEARCH','url':URL_ORDER,'upc':'00123'});wait(lambda:'sku-fixture' in results)
             result=results['sku-fixture'];assert result['success'],result
             assert set(result['data']['tasks']['T1']['sns'])=={'S1','S2'},result
