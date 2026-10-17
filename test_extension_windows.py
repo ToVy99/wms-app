@@ -10,6 +10,9 @@ from cot_logic import URL_ORDER,URL_EXPORT_LIST
 app=QApplication.instance() or QApplication([])
 exe=Path(sys.argv[1]).resolve();root=Path(__file__).resolve().parent
 saved=[];old_local=os.environ.get('LOCALAPPDATA');worker=None
+old_browser_path=os.environ.get('PLAYWRIGHT_BROWSERS_PATH')
+# Isolate the native host's state without moving Playwright's installed browsers.
+os.environ['PLAYWRIGHT_BROWSERS_PATH']=old_browser_path or str(Path(old_local)/'ms-playwright')
 with tempfile.TemporaryDirectory() as td:
     try:
         os.environ['LOCALAPPDATA']=td
@@ -73,3 +76,5 @@ with tempfile.TemporaryDirectory() as td:
                 with winreg.CreateKey(winreg.HKEY_CURRENT_USER,keypath) as key:winreg.SetValueEx(key,'',0,previous[1],previous[0])
         if old_local is None:os.environ.pop('LOCALAPPDATA',None)
         else:os.environ['LOCALAPPDATA']=old_local
+        if old_browser_path is None:os.environ.pop('PLAYWRIGHT_BROWSERS_PATH',None)
+        else:os.environ['PLAYWRIGHT_BROWSERS_PATH']=old_browser_path
