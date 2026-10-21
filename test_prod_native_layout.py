@@ -47,6 +47,15 @@ class NativeProdLayoutTests(unittest.TestCase):
             self.app.processEvents()
             self.assertEqual(tabbar.sizeHint().width(), width)
 
+    def test_no_duplicate_connection_strip_above_controls(self):
+        all_labels=[label.text() for label in self.widget.findChildren(QLabel)]
+        self.assertFalse(any('Dữ liệu chung từ Chrome WMS' in text for text in all_labels))
+        self.assertFalse(any('Chưa kết nối WMS' in text for text in all_labels))
+        self.assertEqual(self.widget._wms_connected,False)
+        self.bridge.sessionChanged.emit(True,'Đang dùng chung tab WMS')
+        self.assertTrue(self.widget._wms_connected)
+        self.assertEqual(self.widget._wms_connection_message,'Đang dùng chung tab WMS')
+
     def test_target_has_no_long_unit_label_and_all_modes_fixed(self):
         texts = [label.text() for label in self.widget.findChildren(QLabel)]
         self.assertNotIn('Items/h hoặc Orders/h', texts)

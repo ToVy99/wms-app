@@ -44,8 +44,14 @@ class NativeTests(unittest.TestCase):
         self.tab.orders=parse_report(fixture([[f'OB{i}','Picked','SPX Express','Hà Nội',f'SN{i}','Single',f'P{i}'] for i in range(7)]),'x.xlsx','intra')['orders']
         for o,area in zip(self.tab.orders,['A1','A2','D1','LC1','CF','A1,A2,LC2','-']):o['area']=area
         self.tab.active_status=3;self.tab.render_all()
-        self.assertIn('A: 3',self.tab.area_summary.text());self.assertIn('LC: 2',self.tab.area_summary.text());self.assertIn('CF: 1',self.tab.area_summary.text())
-        self.assertIn('Chưa có Area: 1',self.tab.area_summary.text())
+        labels=[self.tab.area_buttons_layout.itemAt(i).widget().text()
+                for i in range(self.tab.area_buttons_layout.count())
+                if self.tab.area_buttons_layout.itemAt(i).widget()]
+        self.assertIn('Tất cả · 7',labels)
+        self.assertIn('Khu A · 3',labels)
+        self.assertIn('Khu LC · 2',labels)
+        self.assertIn('Khu CF · 1',labels)
+        self.assertIn('Chưa có Area · 1',labels)
         calls=[];self.tab.request=lambda m,c:calls.append(m)
         self.tab.area.setCurrentIndex(self.tab.area.findData('A'));self.assertEqual(self.tab.table.rowCount(),3)
         self.tab.area.setCurrentIndex(self.tab.area.findData('LC'));self.assertEqual(self.tab.table.rowCount(),2)

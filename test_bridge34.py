@@ -120,7 +120,7 @@ class BridgeTests(unittest.TestCase):
         original=copy.deepcopy(tab.orders);tab.render_all();tab.toggle_picked_baskets(True)
         self.assertEqual(tab.table.rowCount(),2);self.assertEqual([tab.table.item(i,4).text() for i in range(2)],['BSK1','BSK2'])
         self.assertEqual(tab.orders,original);self.assertEqual(progress(tab.orders),(1,4,25))
-        self.assertIn('A: 2',tab.area_summary.text());self.assertNotIn(4,tab.status_buttons);self.assertNotIn(7,tab.status_buttons);self.assertNotIn(8,tab.status_buttons);self.assertIn(10,tab.status_buttons)
+        self.assertTrue(any(w and w.text()=='Khu A · 2' for w in (tab.area_buttons_layout.itemAt(i).widget() for i in range(tab.area_buttons_layout.count()))));self.assertNotIn(4,tab.status_buttons);self.assertNotIn(7,tab.status_buttons);self.assertNotIn(8,tab.status_buttons);self.assertIn(10,tab.status_buttons)
         tab.table.selectRow(0);tab.copy_obvn();self.assertEqual(QApplication.clipboard().text(),'A\nB')
         self.assertEqual(set().union(*(o['picking'] for o in tab.target_orders())),{'PA','PB'})
         tab.search.setText('SNB');self.assertEqual(tab.table.rowCount(),1);tab.copy_obvn();self.assertEqual(QApplication.clipboard().text(),'B')

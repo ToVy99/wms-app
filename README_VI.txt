@@ -94,13 +94,13 @@ CẬP NHẬT SKU / KHU / TỐC ĐỘ:
 - Bảng COT có SKU Name, gộp đủ các SKU của cùng OBVN và giữ một đơn.
   Rê chuột để xem đầy đủ tên, tìm kiếm SKU dùng ô tìm kiếm hiện có.
 - Area gộp theo toàn bộ phần chữ: A1/A2 -> A, LC1/LC2 -> LC, CF giữ CF.
-  Dòng KHU VỰC hiện số đơn theo trạng thái/bộ lọc mã rổ đang chọn.
-  Chọn khu trong Area để lọc đơn ngay, không phát sinh API.
+  Các nút khu nằm ngang bên cạnh nút Tất cả, cập nhật theo trạng thái đang chọn.
+  Chọn khu để lọc đơn ngay, không phát sinh API; không còn dòng thống kê dài phía trên.
   Một đơn nhiều khu tính một lần ở mỗi khu, tổng khu có thể lớn hơn tổng đơn.
 - Report hiện không có Area. Area vẫn nạp bổ sung khi bấm trạng thái,
   chưa tự nạp tất cả. Giữ giới hạn hiện có 2000 đơn/trạng thái.
-  Có Area / Chưa có Area cho biết dữ liệu đang đầy đủ tới đâu; số thiếu
-  có thể là chưa nạp hoặc WMS không trả khu, không xem số thiếu là 0 đơn.
+  Nếu một trạng thái chưa có Area, hãy chờ hệ thống nạp Area theo cơ chế cũ;
+  không coi đơn chưa có thông tin Area là đơn không thuộc khu nào.
 - Bổ sung python-calamine vào bộ cài/build. Dùng bộ đọc nhanh Calamine
   ở cả tab Excel và parser COT; OpenPyXL là dự phòng khi không đọc được.
 - Ngày COT qua đêm vẫn là ngày bắt đầu, ví dụ 01:00 ngày 08/10

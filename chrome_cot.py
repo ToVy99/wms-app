@@ -464,10 +464,8 @@ class ChromeCotTab(QWidget):
         self.dataset_note=QLabel(); self.dataset_note.setWordWrap(True); self.dataset_note.hide()
         self.dataset_note.setStyleSheet('color:#f9e2af; font-size:11px; padding:2px;')
         lower.addWidget(self.dataset_note)
-        self.area_summary=QLabel('KHU VỰC'); self.area_summary.setWordWrap(True)
-        self.area_summary.setStyleSheet('color:#a4e7ff; font-weight:700;')
-        self.area_summary.setToolTip('Đếm theo trạng thái và mã rổ đang chọn; không làm thay đổi KPI COT. Một đơn ở nhiều khu có thể được đếm trong từng khu.')
-        lower.addWidget(self.area_summary)
+        # Compact Area buttons only: no redundant count/description banner above.
+        # Keep the existing status-scoped Area count and filter logic untouched.
         self.area_buttons_host=QWidget()
         self.area_buttons_layout=QHBoxLayout(self.area_buttons_host)
         self.area_buttons_layout.setContentsMargins(1,1,1,1)
@@ -477,7 +475,7 @@ class ChromeCotTab(QWidget):
         self.area_buttons_scroll.setFrameShape(QFrame.Shape.NoFrame)
         self.area_buttons_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
         self.area_buttons_scroll.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
-        self.area_buttons_scroll.setFixedHeight(43)
+        self.area_buttons_scroll.setFixedHeight(38)
         self.area_buttons_scroll.setWidget(self.area_buttons_host)
         self.area_buttons_host.setSizePolicy(QSizePolicy.Policy.MinimumExpanding,QSizePolicy.Policy.Fixed)
         lower.addWidget(self.area_buttons_scroll)
@@ -715,11 +713,6 @@ class ChromeCotTab(QWidget):
             button.setEnabled(not self.busy)
         src=self.status_orders()
         area_counts=Counter(group for o in src for group in self.area_groups(o))
-        known=sum(self.area_groups(o)!={'-'} for o in src)
-        scope='Tất cả trạng thái' if self.active_status is None else status_name(self.active_status)
-        groups=' · '.join(f'{k}: {n:,}'.replace(',','.') for k,n in sorted(area_counts.items()) if k!='-')
-        missing=len(src)-known
-        self.area_summary.setText(f'KHU VỰC · {scope} · '+(groups or 'Chưa có dữ liệu khu')+f'  |  Có Area: {known}/{len(src)} · Chưa có Area: {missing}')
         self.update_area_buttons(area_counts, len(src))
         for combo,field,active in [(self.area,'area',self.active_area),(self.wave,'wave_type',self.active_wave)]:
             combo.blockSignals(True); combo.clear(); combo.addItem(f'Tất cả ({len(src)})',None)

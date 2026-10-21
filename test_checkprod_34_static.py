@@ -71,7 +71,7 @@ class CheckProdStaticTests(unittest.TestCase):
 
     def test_main_app_launches_prod_only_when_clicked(self):
         src=(HERE/'intra_2_3_COT_Dashboard_loginfix.py').read_text(encoding='utf-8')
-        self.assertIn("self.topTabs.addTab('📊 Check Prod')",src)
+        self.assertIn("self.topTabs.addTab('📈 Check Prod')",src)
         self.assertNotIn('self.btnCheckProd=QPushButton(',src)
         self.assertIn('self.topTabs.currentChanged.connect(self._on_top_tab_changed)',src)
         self.assertIn('from productivity_tab import CheckProdTab',src)

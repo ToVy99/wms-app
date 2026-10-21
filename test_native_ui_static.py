@@ -13,7 +13,10 @@ class NativeUIStaticTests(unittest.TestCase):
         self.assertIn('self.topTabs.setSizePolicy(QSizePolicy.Fixed,QSizePolicy.Fixed)',text)
         self.assertNotIn('global_top.addWidget(self.topTabs,0,Qt.AlignCenter)',text)
         self.assertNotIn("self.btnCheckProd=QPushButton(",text)
-        self.assertEqual(text.count("self.topTabs.addTab('📊 Check Prod')"),1)
+        self.assertEqual(text.count("self.topTabs.addTab('📈 Check Prod')"),1)
+        self.assertIn("self.topTabs.addTab('📊 Excel / Outbound')",text)
+        self.assertNotIn("self.topTabs.addTab('📊 Check Prod')",text)
+        self.assertIn("self.mainTabs.insertTab(2,self.check_prod_tab,'📈 Check Prod')",text)
 
     def test_checkprod_has_stable_work_tabs_and_separate_target_row(self):
         text=(ROOT/'productivity_tab.py').read_text(encoding='utf-8')
@@ -25,6 +28,9 @@ class NativeUIStaticTests(unittest.TestCase):
         self.assertIn('button.setFixedSize(72,34)',text)
         self.assertIn("QPushButton[prodChoice=\"true\"]:checked",text)
         self.assertIn('symbol.setFixedSize(50,50)',text)
+        self.assertNotIn("statusbar=QHBoxLayout();main.addLayout(statusbar)",text)
+        self.assertNotIn('Dữ liệu chung từ Chrome WMS',text)
+        self.assertIn('self._wms_connected=bool(connected)',text)
 
     def test_no_business_calculation_or_wms_bridge_edits(self):
         # These modules should remain outside the visual-layout changeset.

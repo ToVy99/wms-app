@@ -9,7 +9,7 @@ $python = Join-Path $PSScriptRoot '.venv-build\Scripts\python.exe'
 if ($LASTEXITCODE -ne 0) { throw 'Khong cap nhat duoc pip.' }
 & $python -m pip install -r requirements-build.txt
 if ($LASTEXITCODE -ne 0) { throw 'Cai dependency that bai.' }
-& $python -m unittest test_native_cot test_theme test_release33 test_sku_finder test_bridge34 test_checkprod_34_static test_native_prod_parity
+& $python -m unittest test_native_cot test_theme test_release33 test_sku_finder test_bridge34 test_checkprod_34_static test_native_prod_parity test_native_ui_static test_prod_native_layout test_area_buttons_release34
 if ($LASTEXITCODE -ne 0) { throw 'COT behavior verification failed.' }
 & $python -m PyInstaller --noconfirm --clean --onefile --windowed --name "IntraCity 3.4" --icon "app.ico" --add-data "app.ico;." --add-data "wms_bridge_manifest.json;." --add-data "wms_bridge_background.js;." --add-data "wms_bridge_content.js;." --add-data "wms_bridge_popup.html;." --add-data "wms_bridge_popup.js;." --add-data "wms_bridge_icon.png;." --add-data "productivity/stations.js;productivity" --exclude-module PySide6.QtWebEngineWidgets --exclude-module PySide6.QtWebEngineCore --exclude-module PySide6.QtWebChannel --collect-all playwright --hidden-import python_calamine --hidden-import pandas.io.excel._calamine --hidden-import openpyxl --hidden-import xlrd launcher.py
 if ($LASTEXITCODE -ne 0) { throw 'Build EXE that bai.' }

@@ -805,7 +805,7 @@ class WMSDashboard(QWidget):
                 self.check_prod_tab = CheckProdTab(self.cotTab.bridge,self.config,save_config,self)
                 self.check_prod_tab.set_theme(self.theme_controller.light)
                 self.mainTabs.removeTab(2)
-                self.mainTabs.insertTab(2,self.check_prod_tab,'📊 Check Prod')
+                self.mainTabs.insertTab(2,self.check_prod_tab,'📈 Check Prod')
             except Exception as exc:
                 QMessageBox.warning(self,'Check Prod','Không mở được Check Prod: '+str(exc))
                 return
@@ -947,7 +947,7 @@ del /F /Q "{backup_exe}" >nul 2>&1
         self.topTabs=QTabBar()
         self.topTabs.addTab('⚡ COT')
         self.topTabs.addTab('📊 Excel / Outbound')
-        self.topTabs.addTab('📊 Check Prod')
+        self.topTabs.addTab('📈 Check Prod')
         self.topTabs.setObjectName('intraMainNav')
         self.topTabs.setExpanding(False)
         self.topTabs.setUsesScrollButtons(False)
@@ -1196,7 +1196,7 @@ del /F /Q "{backup_exe}" >nul 2>&1
         excel_root.addLayout(body, 1)
 
         self.mainTabs.addTab(self.excelTab, "📊 Excel / Outbound")
-        self.mainTabs.addTab(QWidget(), '📊 Check Prod')  # loaded on first click
+        self.mainTabs.addTab(QWidget(), '📈 Check Prod')  # loaded on first click
 
         self.connection_menu=QMenu(self)
         self.connection_menu.addAction('Mở Chrome riêng / Đăng nhập WMS',lambda:self.choose_wms_connection('chrome'))

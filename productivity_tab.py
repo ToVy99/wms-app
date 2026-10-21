@@ -85,11 +85,8 @@ class CheckProdTab(QWidget):
         # IntraCity ThemeController styles child inputs/buttons and calls set_theme()
         # for the Check Prod-specific cards and checked-state palette.
         main=QVBoxLayout(self);main.setContentsMargins(10,8,10,8);main.setSpacing(9)
-        statusbar=QHBoxLayout();main.addLayout(statusbar)
-        statusbar.addWidget(QLabel('📊 Check Prod · Dữ liệu chung từ Chrome WMS'))
-        statusbar.addStretch()
-        self.status=QLabel('⚪ Chưa kết nối');statusbar.addWidget(self.status)
-
+        # WMS connection status is already displayed in IntraCity's shared header;
+        # avoid a second status/title strip above Check Prod controls.
         mode_row=QHBoxLayout();main.addLayout(mode_row)
         self.bau=QPushButton('BAU');self.cp=QPushButton('CP')
         self.item=QPushButton('Item');self.order=QPushButton('Order')
@@ -236,8 +233,10 @@ class CheckProdTab(QWidget):
         self.setStyleSheet(style)
 
     def _state(self,connected,message):
-        self.status.setText('🟢 WMS đã kết nối' if connected else '⚪ Chưa kết nối WMS')
-        self.status.setToolTip(message)
+        # Keep connection metadata for diagnostics without duplicating the
+        # shared header indicator. No change to any bridge or API behavior.
+        self._wms_connected=bool(connected)
+        self._wms_connection_message=str(message)
 
     def _restore_range(self):
         interval=self.prefs.get('intervalPrefs') or {}
