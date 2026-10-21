@@ -14,7 +14,7 @@ from pathlib import Path
 from uuid import uuid4
 
 from PySide6.QtCore import Qt, QDate, QTime, QTimer
-from PySide6.QtGui import QFont
+from PySide6.QtGui import QColor, QFont
 from PySide6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QGridLayout, QLabel,
     QPushButton, QFrame, QComboBox, QCheckBox, QLineEdit, QDateEdit, QTimeEdit,
     QTableWidget, QTableWidgetItem, QHeaderView, QAbstractItemView, QMessageBox,
@@ -68,6 +68,7 @@ class CheckProdTab(QWidget):
         self.rows=[];self.cache_key=None;self.busy=False;self.pending=None;self.task=None
         self.sort_ascending=False;self._light_theme=False;self.warnings=[];self._load_key=None
         self.request_log=[];self._retry_count=0;self._last_request=None
+        self._highlighted_employee=None
         self._build()
         self.bridge.completed.connect(self._completed)
         self.bridge.sessionChanged.connect(self._state)
@@ -169,13 +170,9 @@ class CheckProdTab(QWidget):
                 label=f'{h:02d}:{m:02d}';self.to_time.addItem(label,label)
         range_row.addWidget(self.to_time)
         range_row.addStretch()
-        self.email=QLineEdit(self.prefs.get('loginEmail',''))
-        self.email.setPlaceholderText('Email WMS (nếu API yêu cầu)');self.email.setMaximumWidth(240)
-        range_row.addWidget(self.email)
         self.date.dateChanged.connect(self._persist_interval)
         self.from_time.timeChanged.connect(self._persist_interval)
         self.to_time.currentIndexChanged.connect(self._persist_interval)
-        self.email.editingFinished.connect(self._save_email)
 
         filter_row=QHBoxLayout();main.addLayout(filter_row)
         self.show_all=QCheckBox('Hiện tất cả (kể cả đạt Target)');self.show_all.toggled.connect(self._render)
@@ -189,10 +186,16 @@ class CheckProdTab(QWidget):
 
         self.message=QLabel();self.message.setWordWrap(True);self.message.setObjectName('prodMessage')
         main.addWidget(self.message)
-        self.count=QLabel();main.addWidget(self.count)
+        count_row=QHBoxLayout();main.addLayout(count_row)
+        self.count=QLabel();count_row.addWidget(self.count);count_row.addStretch()
+        self.clear_highlight=QPushButton('Bỏ tô sáng')
+        self.clear_highlight.setEnabled(False)
+        self.clear_highlight.clicked.connect(self._clear_employee_highlight)
+        count_row.addWidget(self.clear_highlight)
         self.table=QTableWidget();self.table.setAlternatingRowColors(True)
         self.table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         self.table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
+        self.table.cellClicked.connect(self._employee_clicked)
         self.table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Interactive)
         self.table.horizontalHeader().setStretchLastSection(True)
         main.addWidget(self.table,1)
@@ -231,6 +234,7 @@ class CheckProdTab(QWidget):
         QPushButton#prodPrimaryAction {{background:{active};color:{active_text};border:1px solid {active};font-weight:700;}}
         '''
         self.setStyleSheet(style)
+        self._apply_employee_highlight()
 
     def _state(self,connected,message):
         # Keep connection metadata for diagnostics without duplicating the
@@ -257,9 +261,6 @@ class CheckProdTab(QWidget):
                                     'from':self.from_time.time().toString('HH:mm'),
                                     'to':self.to_time.currentData()}
         self._save()
-
-    def _save_email(self):
-        self.prefs['loginEmail']=self.email.text().strip();self._save()
 
     def _save_target(self):
         try:value=float(self.target.text())
@@ -394,7 +395,7 @@ class CheckProdTab(QWidget):
         self.busy=True;self.start.setEnabled(False);self.start.setText('Đang tải…')
         self.message.setText('Đang tải dữ liệu từ WMS…')
         self._load_key=(self.tab,self.unit)
-        self.task=self._load(self.tab,self.unit,int(time.time()),self.email.text().strip())
+        self.task=self._load(self.tab,self.unit,int(time.time()),self.prefs.get('loginEmail','').strip())
         self._advance(None,first=True)
 
     def _advance(self,response,first=False):
@@ -441,6 +442,43 @@ class CheckProdTab(QWidget):
         self.direction.setText('↑ Thấp → Cao' if self.sort_ascending else '↓ Cao → Thấp')
         self._render()
 
+    def _employee_clicked(self,row,col):
+        name_col=0 if self.tab in ('Sort','Check','Pack') else 5
+        if col!=name_col:return
+        item=self.table.item(row,col)
+        key=item.data(Qt.ItemDataRole.UserRole) if item else None
+        if not key:return
+        self._highlighted_employee=None if key==self._highlighted_employee else key
+        self.table.clearSelection()
+        self._apply_employee_highlight()
+
+    def _clear_employee_highlight(self):
+        self._highlighted_employee=None
+        self.table.clearSelection()
+        self._apply_employee_highlight()
+
+    def _apply_employee_highlight(self):
+        # Only decorate table items; keep source rows, totals and export values intact.
+        bg=QColor('#fff0ac' if self._light_theme else '#66521c')
+        fg=QColor('#302400' if self._light_theme else '#fff3bb')
+        for row in range(self.table.rowCount()):
+            for col in range(self.table.columnCount()):
+                item=self.table.item(row,col)
+                if item is None:continue
+                active=bool(self._highlighted_employee and
+                            item.data(Qt.ItemDataRole.UserRole)==self._highlighted_employee)
+                item.setData(Qt.ItemDataRole.BackgroundRole,bg if active else None)
+                item.setData(Qt.ItemDataRole.ForegroundRole,fg if active else None)
+                font=item.font();font.setBold(active);item.setFont(font)
+        self.clear_highlight.setEnabled(self._highlighted_employee is not None)
+
+    def _employee_key(self,row):
+        people=self.tab in ('Sort','Check','Pack')
+        email=str(row.get('email' if people else 'operatorEmail') or '').strip().casefold()
+        if email:return 'email:'+email
+        name=str(row.get('name' if people else 'operatorName') or '').strip().casefold()
+        return 'name:'+name if name and name not in ('—','-') else None
+
     def _render(self,*_):
         current=self.cache_key==(self.tab,self.unit)
         if not current:
@@ -470,14 +508,21 @@ class CheckProdTab(QWidget):
             self.table.setColumnCount(len(headers));self.table.setHorizontalHeaderLabels(headers)
             self.table.setRowCount(len(view['rows']))
             for row,r in enumerate(view['rows']):
+                employee=self._employee_key(r)
+                name_col=0 if self.tab in ('Sort','Check','Pack') else 5
                 for col,value in enumerate(make(r)):
                     item=QTableWidgetItem(str(value) if value is not None else '—')
+                    item.setData(Qt.ItemDataRole.UserRole,employee)
+                    if col==name_col and employee:
+                        item.setToolTip('Bấm tên để tô sáng tất cả dòng của nhân viên; bấm lại để bỏ tô sáng.')
                     if col and isinstance(value,str) and re.fullmatch(r'\d+\.\d+',value):item.setTextAlignment(Qt.AlignmentFlag.AlignRight|Qt.AlignmentFlag.AlignVCenter)
                     self.table.setItem(row,col,item)
+            self._apply_employee_highlight()
         finally:self.table.setUpdatesEnabled(True)
 
     def _display_empty(self):
         self.table.setRowCount(0)
+        self._clear_employee_highlight()
         for value in self.metric_values.values():value.setText('—')
         self.count.setText('Bấm Tải dữ liệu để xem '+self.tab+' · '+('Order' if self.unit=='order_count' else 'Item'))
 

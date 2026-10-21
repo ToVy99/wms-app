@@ -34,5 +34,10 @@ class AreaReleaseUIRegression(unittest.TestCase):
         self.assertNotIn('Đảo thứ tự Prod:', notes)
         self.assertNotIn('Giao diện gốc IntraCity:', notes)
         self.assertNotIn('3.5', notes)
+        for heading in ('Bổ sung ngày 17/10','Bổ sung Check Prod trong bản thử nghiệm 3.4','Các thay đổi của bản 3.4'):
+            self.assertNotIn(heading,notes)
+        self.assertIn('Chrome đã đăng nhập của, không yêu cầu đăng nhập riêng.',notes)
+        self.assertEqual(notes.count('<li>'),16)
+        self.assertEqual(notes.count('<ul>'),1)
 
 if __name__=='__main__': unittest.main()

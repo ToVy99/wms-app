@@ -6,21 +6,14 @@ VERSION='3.4'
 RELEASE_ID='3.4-checkprod-native-area-ui-notes-20261021'
 TITLE='IntraCity 3.4'
 NOTES='''<h2>Có gì mới trong IntraCity 3.4?</h2>
-<p><b>Bổ sung Check Prod trong bản thử nghiệm 3.4:</b></p>
 <ul>
 <li><b>Check Prod:</b> Một tab chức năng cạnh Excel / Outbound, mở bảng năng suất Sort, Check, Check Station, Check&amp;Pack, Pack.</li>
-<li><b>Một phiên Chrome/WMS:</b> Check Prod dùng cầu nối (tiện ích) Chrome đã đăng nhập, không yêu cầu đăng nhập riêng. Bổ sung kết nối lại sau khi tab WMS tải lại nếu phiên còn hợp lệ.</li>
+<li><b>Một phiên Chrome/WMS:</b> Check Prod dùng cầu nối (tiện ích) Chrome đã đăng nhập của, không yêu cầu đăng nhập riêng. Bổ sung kết nối lại sau khi tab WMS tải lại nếu phiên còn hợp lệ.</li>
 <li><b>Lọc Area bằng nút:</b> Nhấn khu A để chỉ xem đơn thuộc khu A của trạng thái đang chọn, kể cả Picked. Đổi trạng thái giữ lựa chọn khu.</li>
-</ul>
-<p><b>Bổ sung ngày 17/10:</b></p>
-<ul>
 <li>Hoạt ảnh tải nằm gọn bên phải nút ⋯, cùng hàng với Lưu Excel gốc.</li>
 <li>Nới rộng Wave Type, thu gọn ô tìm đơn; rê chuột để xem đầy đủ nội dung.</li>
 <li>Đồng bộ trạng thái kết nối; ngắt khi đóng tab WMS, thử tự khôi phục sau khi tab tải lại nếu phiên còn hợp lệ. Thêm nút Ngắt kết nối trong app.</li>
 <li>Thêm nút Lưu tiện ích (.zip) ngay trong cửa sổ kết nối.</li>
-</ul>
-<p><b>Các thay đổi của bản 3.4:</b></p>
-<ul>
 <li><b>Giao diện gọn hơn:</b> Chuyển COT / Excel–Outbound lên giữa thanh trên cùng, tăng diện tích bảng đơn.</li>
 <li><b>Thu gọn thao tác:</b> Gom các nút chọn đơn, bỏ chọn, Copy OBVN và Picking ID / BSK vào menu Thao tác. Đưa “Lưu Excel gốc” gần nút tải dữ liệu.</li>
 <li><b>Giữ thống kê khu vực:</b> Bỏ ô lọc Area, vẫn giữ cột Area và số lượng đơn từng khu để dễ so sánh.</li>
