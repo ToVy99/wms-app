@@ -91,7 +91,7 @@ class NativeProdLayoutTests(unittest.TestCase):
                 for i,(name,email,prod) in enumerate([
                     ('An','an@example.com',10),('An',' AN@example.com ',20),
                     ('An','another@example.com',30),('Bình','binh@example.com',40)])]
-        w.cache_key=(w.tab,w.unit);w.show_all.setChecked(True);w._render()
+        w.cache_key=w._view_key();w.show_all.setChecked(True);w._render()
         w.resize(1250,850);self.app.processEvents()
 
     def click_cell(self,row,col):
