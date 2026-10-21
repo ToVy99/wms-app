@@ -1,0 +1,39 @@
+name: Build IntraCity 3.4 Native Trial
+on:
+  push:
+    branches:
+      - codex/intracity-34-native-ui-tests
+    paths:
+      - .github/workflows/native-trial-build.yml
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  build:
+    runs-on: windows-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          architecture: 'x64'
+      - name: Build and verify EXE
+        shell: pwsh
+        run: ./build_windows.ps1
+      - name: Upload trial EXE
+        uses: actions/upload-artifact@v4
+        with:
+          name: IntraCity_3.4_Native_Trial_EXE
+          path: dist/*.exe
+          if-no-files-found: error
+          retention-days: 14
+      - name: Upload diagnostic output
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: IntraCity_3.4_Trial_Diagnostics
+          path: |
+            smoke-test-result.json
+            smoke-gui.png
+          if-no-files-found: ignore
