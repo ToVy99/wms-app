@@ -22,6 +22,7 @@ from PySide6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QGridLayout, Q
 
 import prod_native_core as core
 import prod_native_api as api
+from prod_report_view import EmployeeTable, hourly_windows, raw_totals
 
 TABS=('Sort','Check','Check Station','Check&Pack','Pack')
 PRESETS={'BAU1':'08:00–19:00','BAU2':'19:00–06:00','CP1':'07:00–18:00','CP2':'18:00–06:00'}
@@ -69,11 +70,13 @@ class CheckProdTab(QWidget):
         self.sort_ascending=False;self._light_theme=False;self.warnings=[];self._load_key=None
         self.request_log=[];self._retry_count=0;self._last_request=None
         self._highlighted_employee=None
+        self._views={};self._restoring=True;self.hour_windows=[];self.loaded_unit=self.unit
         self._build()
         self.bridge.completed.connect(self._completed)
         self.bridge.sessionChanged.connect(self._state)
         self._state(self.bridge.connected,self.bridge.session_message)
         self._restore_range()
+        self._restoring=False
         self._refresh_controls()
         self._render()
 
@@ -164,17 +167,16 @@ class CheckProdTab(QWidget):
         self.date=QDateEdit();self.date.setCalendarPopup(True);self.date.setDisplayFormat('dd/MM/yyyy')
         self.date.setDate(QDate.currentDate());self.date.setFixedHeight(28);range_row.addWidget(self.date)
         range_row.addWidget(QLabel('Từ'))
-        self.from_time=QTimeEdit();self.from_time.setDisplayFormat('HH:mm');self.from_time.setFixedHeight(28);range_row.addWidget(self.from_time)
+        self.from_time=QLineEdit();self.from_time.setPlaceholderText('HH:mm');self.from_time.setFixedWidth(80)
+        range_row.addWidget(self.from_time)
         range_row.addWidget(QLabel('Đến'))
-        self.to_time=QComboBox();self.to_time.addItem('Hiện tại','now')
-        for h in range(24):
-            for m in (0,30):
-                label=f'{h:02d}:{m:02d}';self.to_time.addItem(label,label)
-        self.to_time.setFixedHeight(28);range_row.addWidget(self.to_time)
+        self.to_time=QLineEdit();self.to_time.setPlaceholderText('HH:mm');self.to_time.setFixedWidth(80)
+        range_row.addWidget(self.to_time)
+        range_row.addWidget(QLabel('Nhập tay · gồm cả phút kết thúc'))
         range_row.addStretch()
         self.date.dateChanged.connect(self._persist_interval)
-        self.from_time.timeChanged.connect(self._persist_interval)
-        self.to_time.currentIndexChanged.connect(self._persist_interval)
+        self.from_time.textChanged.connect(self._persist_interval)
+        self.to_time.textChanged.connect(self._persist_interval)
 
         filter_row=QHBoxLayout();main.addLayout(filter_row)
         self.show_all=QCheckBox('Hiện tất cả (kể cả đạt Target)');self.show_all.toggled.connect(self._render)
@@ -194,12 +196,12 @@ class CheckProdTab(QWidget):
         self.clear_highlight.setEnabled(False)
         self.clear_highlight.clicked.connect(self._clear_employee_highlight)
         count_row.addWidget(self.clear_highlight)
-        self.table=QTableWidget();self.table.setAlternatingRowColors(True)
+        self.table=EmployeeTable();self.table.setAlternatingRowColors(True)
         self.table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         self.table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         self.table.cellClicked.connect(self._employee_clicked)
         self.table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Interactive)
-        self.table.horizontalHeader().setStretchLastSection(True)
+        self.table.horizontalHeader().setStretchLastSection(False)
         main.addWidget(self.table,1)
 
     def resizeEvent(self, event):
@@ -246,6 +248,12 @@ class CheckProdTab(QWidget):
         QTabBar#prodWorkTabs::tab:hover:!selected {{background:{hover};}}
         QPushButton#prodPrimaryAction {{background:{active};color:{active_text};border:1px solid {active};font-weight:700;}}
         '''
+        style+=f"""
+        QTableView {{background:{card};alternate-background-color:{bg};color:{fg};
+                    gridline-color:{border};border:1px solid {border};selection-background-color:{hover};selection-color:{fg};}}
+        QTableView::item {{padding:6px;border-bottom:1px solid {border};}}
+        QHeaderView::section {{background:{button};color:{secondary};padding:7px;border:0;border-bottom:1px solid {border};font-weight:600;}}
+        """
         self.setStyleSheet(style)
         self._apply_employee_highlight()
 
@@ -256,29 +264,56 @@ class CheckProdTab(QWidget):
         self._wms_connection_message=str(message)
 
     def _restore_range(self):
-        interval=self.prefs.get('intervalPrefs') or {}
-        try:
-            today=datetime.now(VN_TZ).strftime('%Y-%m-%d')
-            day=QDate.fromString(interval.get('date',today),'yyyy-MM-dd')
-            if day.isValid():self.date.setDate(day)
-            t=QTime.fromString(interval.get('from','07:00'),'HH:mm')
-            if t.isValid():self.from_time.setTime(t)
-            pos=self.to_time.findData(interval.get('to','now'))
-            if pos>=0:self.to_time.setCurrentIndex(pos)
-        finally:
-            self.tab_select.setCurrentIndex(TABS.index(self.tab))
+        self.tab_select.blockSignals(True)
+        self.tab_select.setCurrentIndex(TABS.index(self.tab))
+        self.tab_select.blockSignals(False)
+        self._restore_view(self.tab)
+
+    def _draft(self):
+        return {'date':self.date.date().toString('yyyy-MM-dd'),
+                'from':self.from_time.text(),'to':self.to_time.text(),
+                'unit':self.unit,'mode':self.mode,'shift':self.shift_number}
 
     def _persist_interval(self,*_):
-        if not hasattr(self,'prefs'):return
-        self.prefs['intervalPrefs']={'date':self.date.date().toString('yyyy-MM-dd'),
-                                    'from':self.from_time.time().toString('HH:mm'),
-                                    'to':self.to_time.currentData()}
+        if self._restoring:return
+        self.prefs.setdefault('tabIntervals',{})[self.tab]=self._draft()
         self._save()
-        if hasattr(self,'table'):self._render()
+        # Editing the next query never clears the last successful snapshot.
 
     def _view_key(self):
         return (self.tab,self.unit,self.date.date().toString('yyyy-MM-dd'),
-                self.from_time.time().toString('HH:mm'),self.to_time.currentData())
+                self.from_time.text(),self.to_time.text())
+
+    def _capture_view(self):
+        self._views[self.tab]={'draft':self._draft(),'rows':self.rows,'cache_key':self.cache_key,
+            'loaded_unit':self.loaded_unit,'hours':self.hour_windows,
+            'show_all':self.show_all.isChecked(),'ascending':self.sort_ascending,
+            'target_text':self.target.text(),
+            'highlight':self._highlighted_employee,'message':self.message.text(),
+            'scroll':(self.table.horizontalScrollBar().value(),self.table.verticalScrollBar().value()),
+            'widths':[self.table.columnWidth(c) for c in range(self.table.columnCount())]}
+
+    def _restore_view(self,tab):
+        self._restoring=True
+        state=self._views.get(tab,{})
+        draft=state.get('draft',self.prefs.get('tabIntervals',{}).get(tab,{}))
+        self.unit=draft.get('unit','item_count');self.mode=draft.get('mode','BAU');self.shift_number=draft.get('shift',1)
+        self.date.setDate(QDate.fromString(draft.get('date',datetime.now(VN_TZ).strftime('%Y-%m-%d')),'yyyy-MM-dd'))
+        self.from_time.setText(draft.get('from',''));self.to_time.setText(draft.get('to',''))
+        self.rows=state.get('rows',[]);self.cache_key=state.get('cache_key')
+        self.loaded_unit=state.get('loaded_unit',self.unit);self.hour_windows=state.get('hours',[])
+        self.sort_ascending=state.get('ascending',False)
+        self.direction.setText('↑ Thấp → Cao' if self.sort_ascending else '↓ Cao → Thấp')
+        self.show_all.blockSignals(True);self.show_all.setChecked(state.get('show_all',False));self.show_all.blockSignals(False)
+        self._highlighted_employee=state.get('highlight');self.message.setText(state.get('message',''))
+        self._refresh_controls();self._render()
+        if 'target_text' in state:self.target.setText(state['target_text'])
+        for c,width in enumerate(state.get('widths',[])):
+            if c<self.table.columnCount():self.table.setColumnWidth(c,width)
+        self.table.sync_frozen()
+        h,v=state.get('scroll',(0,0))
+        self.table.horizontalScrollBar().setValue(h);self.table.verticalScrollBar().setValue(v)
+        self._restoring=False
 
     def _save_target(self):
         try:value=float(self.target.text())
@@ -308,27 +343,21 @@ class CheckProdTab(QWidget):
 
     def _set_mode(self,value):
         if self.busy:return
-        self.mode=value;self.prefs['shiftMode']=value;self._save();self._apply_shift()
+        self.mode=value;self.prefs['shiftMode']=value;self._save();self._refresh_controls();self._persist_interval()
 
     def _set_shift(self,value):
         if self.busy:return
-        self.shift_number=value;self.prefs['shiftNumber']=value;self._save();self._apply_shift()
-
-    def _apply_shift(self):
-        times=valid_preset(self.presets[self.mode+str(self.shift_number)])
-        if times:
-            self.from_time.setTime(QTime.fromString(times[0],'HH:mm'))
-            pos=self.to_time.findData(times[1]);self.to_time.setCurrentIndex(pos if pos>=0 else 0)
-        self._refresh_controls();self._render()
+        self.shift_number=value;self.prefs['shiftNumber']=value;self._save();self._refresh_controls();self._persist_interval()
 
     def _set_unit(self,value):
         if self.busy or value==self.unit:return
-        self.unit=value;self.prefs['peopleUnit']=value;self._save();self.cache_key=None;self._refresh_controls();self._render()
+        self.unit=value;self._persist_interval();self._refresh_controls()
 
     def _tab_changed(self,index):
-        if index<0 or index>=len(TABS):return
-        value=TABS[index]
-        self.tab=value;self.prefs['tab']=value;self._save();self._refresh_controls();self._render()
+        if self._restoring or index<0 or index>=len(TABS) or TABS[index]==self.tab:return
+        self._capture_view()
+        self.tab=TABS[index];self.prefs['tab']=self.tab;self._save()
+        self._restore_view(self.tab)
 
     def _edit_shifts(self):
         dialog=QDialog(self);dialog.setWindowTitle('Điều chỉnh khung giờ BAU / CP')
@@ -345,43 +374,70 @@ class CheckProdTab(QWidget):
             if not val:
                 QMessageBox.warning(self,'Khung giờ','Cần nhập HH:mm–HH:mm, giờ bắt đầu khác giờ kết thúc.');return
             next_presets[key]='–'.join(val)
-        self.presets=next_presets;self.prefs['shiftPresets']=self.presets;self._save();self._apply_shift()
+        self.presets=next_presets;self.prefs['shiftPresets']=self.presets;self._save();self._refresh_controls();self._persist_interval()
 
     def _interval(self,now):
         day=self.date.date().toString('yyyy-MM-dd')
-        start=self.from_time.time().toString('HH:mm')
-        from_dt=datetime.fromisoformat(day+'T'+start+':00').replace(tzinfo=VN_TZ)
-        from_ts=int(from_dt.timestamp())
-        end=self.to_time.currentData()
-        if end=='now':to_ts=now
-        else:
-            to_ts=int(datetime.fromisoformat(day+'T'+end+':00').replace(tzinfo=VN_TZ).timestamp())-1
-            if to_ts<from_ts:to_ts+=86400
+        start=self.from_time.text().strip();end=self.to_time.text().strip()
+        if any(not re.fullmatch(r'(?:[01]\d|2[0-3]):[0-5]\d',t) for t in (start,end)):
+            raise ValueError('Nhập giờ bắt đầu và kết thúc theo HH:mm, ví dụ 07:00–18:59.')
+        from_ts=int(datetime.fromisoformat(day+'T'+start+':00').replace(tzinfo=VN_TZ).timestamp())
+        to_ts=int(datetime.fromisoformat(day+'T'+end+':59').replace(tzinfo=VN_TZ).timestamp())
+        if end<start:to_ts+=86400
         if from_ts>now:raise ValueError('Giờ bắt đầu không được ở tương lai.')
-        if to_ts>now:to_ts=now
-        if to_ts<=from_ts:raise ValueError('Giờ kết thúc phải sau giờ bắt đầu.')
+        if to_ts>now:raise ValueError('Giờ kết thúc không được ở tương lai; hãy nhập khung giờ đã hoàn tất.')
         return {'from':from_ts,'to':to_ts}
 
     def _load(self, tab, unit, now, email):
+        # Cache only within this explicit load. A failed refresh cannot replace a snapshot.
+        interval=self._interval(now)
+        self._query_cache={}
+        rows=yield from self._load_base(tab,unit,now,email)
+        station=tab in ('Check Station','Check&Pack')
+        task_type=43 if tab=='Sort' else 42 if tab=='Pack' else 41
+        dim='station' if station else 'individual'
+        windows=hourly_windows(interval)
+        for window in [interval]+windows:
+            totals={}
+            for column in ('item_count','order_count'):
+                raw=yield from self._fetch_productivity(window['from'],window['to'],task_type,column,dim,email)
+                totals[column]=raw_totals(raw,station)
+            for row in rows:
+                key=core.norm_id(row.get('stationId')) if station else core.norm(row.get('email'))
+                exact={column:totals[column].get(key,{}) for column in totals}
+                if window is interval:row['apiTotals']=exact
+                else:row.setdefault('hourly',[]).append(exact)
+        self._result_windows=windows
+        return rows
+
+    def _fetch_productivity(self,start,end,task_type,column='item_count',dim='individual',email=''):
+        key=(start,end,task_type,column,dim,email)
+        cache=getattr(self,'_query_cache',None)
+        if cache is not None and key in cache:return cache[key]
+        rows=yield from api.fetch_productivity(start,end,task_type,column,dim,email)
+        if cache is not None:cache[key]=rows
+        return rows
+
+    def _load_base(self, tab, unit, now, email):
         self.warnings=[]
         interval=self._interval(now)
         if tab in ('Sort','Check'):
-            items=yield from api.fetch_productivity(interval['from'],interval['to'],
+            items=yield from self._fetch_productivity(interval['from'],interval['to'],
                     43 if tab=='Sort' else 41,unit,'individual',email)
             return core.build_people(items)
         hw=core.hour_windows(interval['to'])
         if tab=='Pack':
-            items=yield from api.fetch_productivity(interval['from'],interval['to'],42,'item_count','individual',email)
-            orders=yield from api.fetch_productivity(interval['from'],interval['to'],42,'order_count','individual',email)
+            items=yield from self._fetch_productivity(interval['from'],interval['to'],42,'item_count','individual',email)
+            orders=yield from self._fetch_productivity(interval['from'],interval['to'],42,'order_count','individual',email)
             try:tasks=yield from api.fetch_pack_tasks()
             except api.WMSRequestError as exc:tasks=[];self.warnings.append(str(exc)+' · thiếu Station')
             prev=yield from self._soft_hours(hw['prev'],42,email)
             cur=yield from self._soft_hours(hw['cur'],42,email,cache=items if hw['cur']['from']==interval['from'] and hw['cur']['to']==interval['to'] else None)
             return core.merge_rows(items,orders,core.build_pack_station_map(tasks),{'prev':core.hour_map(prev),'cur':core.hour_map(cur)},self.station_names)
         base=interval
-        stations=yield from api.fetch_productivity(base['from'],base['to'],41,'item_count','station',email)
+        stations=yield from self._fetch_productivity(base['from'],base['to'],41,'item_count','station',email)
         if not stations:return []
-        try:people=yield from api.fetch_productivity(base['from'],base['to'],41,'item_count','individual',email)
+        try:people=yield from self._fetch_productivity(base['from'],base['to'],41,'item_count','individual',email)
         except api.WMSRequestError as exc:people=[];self.warnings.append('Không có dữ liệu nhân viên: '+str(exc))
         try:
             if now-interval['to']<120:
@@ -398,7 +454,7 @@ class CheckProdTab(QWidget):
 
     def _soft_hours(self,window,task_type,email,cache=None):
         if cache is not None:return cache
-        try:return (yield from api.fetch_productivity(window['from'],window['to'],task_type,'item_count','individual',email))
+        try:return (yield from self._fetch_productivity(window['from'],window['to'],task_type,'item_count','individual',email))
         except api.WMSRequestError as exc:
             self.warnings.append('Thiếu Prod theo giờ: '+str(exc));return []
 
@@ -414,7 +470,8 @@ class CheckProdTab(QWidget):
         self._save_target()
         self.busy=True;self.start.setEnabled(False);self.start.setText('Đang tải…')
         self.message.setText('Đang tải dữ liệu từ WMS…')
-        self._load_key=self._view_key()
+        self._load_key=self._view_key();self._load_tab=self.tab;self._load_unit=self.unit;self._result_windows=[]
+        self._capture_view()
         self.task=self._load(self.tab,self.unit,int(time.time()),self.prefs.get('loginEmail','').strip())
         self._advance(None,first=True)
 
@@ -423,19 +480,23 @@ class CheckProdTab(QWidget):
         try:
             msg=next(self.task) if first else self.task.send(response)
         except StopIteration as stop:
-            self.rows=stop.value or []
-            self.cache_key=self._load_key
-            self.task=None;self.pending=None;self.busy=False
-            self.start.setEnabled(True);self.start.setText('↻ Tải dữ liệu')
-            self.message.setText(' '.join(self.warnings) if self.warnings else 'Đã tải dữ liệu.')
-            self._render();return
+            self._capture_view()
+            state=self._views[self._load_tab]
+            state.update(rows=stop.value or [],cache_key=self._load_key,loaded_unit=self._load_unit,
+                         hours=self._result_windows,message=' '.join(self.warnings) if self.warnings else 'Đã tải dữ liệu.')
+            self._finish_load();self._restore_view(self.tab);return
         except Exception as exc:
-            self.task=None;self.pending=None;self.busy=False
-            self.start.setEnabled(True);self.start.setText('↻ Tải dữ liệu')
-            self.message.setText('Không tải được Check Prod: '+str(exc))
-            return
+            self._capture_view()
+            state=self._views[self._load_tab]
+            # Do not expose server response text, which can contain session details.
+            state['message']='Không tải được dữ liệu. Giữ nguyên lần tải thành công trước; hãy thử lại.'
+            self._finish_load();self._restore_view(self.tab);return
         self._last_request=msg;self._retry_count=0
         self._send_request(msg)
+
+    def _finish_load(self):
+        self.task=None;self.pending=None;self.busy=False;self._query_cache={}
+        self.start.setEnabled(True);self.start.setText('↻ Tải dữ liệu')
 
     def _send_request(self, msg):
         if not self.task:return
@@ -452,7 +513,9 @@ class CheckProdTab(QWidget):
         if not reply.get('success') and ('HTTP 429' in error or 'HTTP 503' in error) and self._retry_count<4:
             delays=(800,1600,3200,6400)
             delay=delays[self._retry_count];self._retry_count+=1
-            self.message.setText(f'WMS giới hạn yêu cầu, thử lại lần {self._retry_count}/4 sau {delay/1000:g}s…')
+            message=f'WMS giới hạn yêu cầu, thử lại lần {self._retry_count}/4 sau {delay/1000:g}s…'
+            self._views[self._load_tab]['message']=message
+            if self.tab==self._load_tab:self.message.setText(message)
             QTimer.singleShot(delay,lambda:self._send_request(self._last_request))
             return
         QTimer.singleShot(0,lambda:self._advance(reply))
@@ -463,7 +526,7 @@ class CheckProdTab(QWidget):
         self._render()
 
     def _employee_clicked(self,row,col):
-        name_col=0 if self.tab in ('Sort','Check','Pack') else 5
+        name_col=1
         if col!=name_col:return
         item=self.table.item(row,col)
         key=item.data(Qt.ItemDataRole.UserRole) if item else None
@@ -500,44 +563,66 @@ class CheckProdTab(QWidget):
         return 'name:'+name if name and name not in ('—','-') else None
 
     def _render(self,*_):
-        current=self.cache_key==self._view_key()
+        current=self.cache_key is not None
         if not current:
             self._display_empty()
             return
-        target=self._active_target()
-        view=core.filtered_view(self.rows,self.tab,target,self.show_all.isChecked(),self.unit,self.sort_ascending)
-        metrics=core.summary(self.rows,self.tab,self.unit,len(view['below']))
+        unit=self.loaded_unit
+        target=(self.order_targets if unit=='order_count' and self.tab in ('Sort','Check','Pack') else self.targets)[self.tab]
+        view=core.filtered_view(self.rows,self.tab,target,self.show_all.isChecked(),unit,self.sort_ascending)
+        metrics=core.summary(self.rows,self.tab,unit,len(view['below']))
+        eligible=self.rows if self.tab in ('Sort','Check','Pack') else [r for r in self.rows if core.area_of(r['stationId'])==('Check' if self.tab=='Check Station' else self.tab)]
+        if any('apiTotals' in r for r in eligible):
+            column=unit if self.tab in ('Sort','Check','Pack') else 'item_count'
+            quantities=[r.get('apiTotals',{}).get(column,{}).get('qty') for r in eligible]
+            metrics['qty']=sum(quantities) if all(core.number(q) for q in quantities) else None
         for key,value in metrics.items():
             if key in self.metric_values:self.metric_values[key].setText(whole(value) if key in ('qty','below') else fmt(value))
         self.count.setText(f"{len(view['below'])} dưới Target trong tổng {view['total']} · {self.tab}"+
-                           (f" · {view['hidden']} Station chưa xác định" if view['hidden'] else ''))
-        if self.tab in ('Sort','Check'):
-            headers=['Nhân viên','Email', 'Sản lượng '+('Order' if self.unit=='order_count' else 'Item'),'Giờ công','Prod/h','Target']
-            make=lambda r:[r.get('name'),r.get('email'),fmt(r.get('items')),fmt(r.get('manHour')),fmt(r.get('productivity')),fmt(target)]
-        elif self.tab=='Pack':
-            headers=['Nhân viên','Email','Prod (Item)','Prod (Order)','Giờ công','Prod H-1','Prod H','Station ID','Tên Station']
-            make=lambda r:[r.get('name'),r.get('email'),fmt(r.get('items')),fmt(r.get('orders')),fmt(r.get('manHour')),
-                           fmt(r.get('hPrev')),fmt(r.get('hCur')),r.get('stationId'),r.get('stationName')]
-        else:
-            headers=['Station ID','Tên Station','Prod Station','Giờ công','Item','Nhân viên','Email','Prod nhân viên','Prod H-1','Prod H']
-            make=lambda r:[r.get('stationId'),r.get('stationName'),fmt(r.get('prod')),fmt(r.get('manHour')),
-                           whole(r.get('items')),r.get('operatorName'),r.get('operatorEmail'),fmt(r.get('staffProd')),
-                           fmt(r.get('hPrev')),fmt(r.get('hCur'))]
+                           (f" · {view['hidden']} Station chưa xác định" if view['hidden'] else '')+
+                           f' · Đã tải: {self.cache_key[2]} {self.cache_key[3]}–{self.cache_key[4]} · '+('Order' if unit=='order_count' else 'Item'))
+        people=self.tab in ('Sort','Check','Pack')
+        headers=['STT','Nhân viên','Item','Order','Giờ công']
+        if self.tab in ('Sort','Check'):headers+=['Prod/h','Target']
+        elif self.tab=='Pack':headers+=['Prod (Item)','Prod (Order)','Prod H-1','Prod H','Station ID','Tên Station']
+        else:headers+=['Station ID','Tên Station','Prod Station','Prod nhân viên','Prod H-1','Prod H']
+        for window in self.hour_windows:
+            headers += [window['label']+'\n'+label for label in ('Item','Order','Giờ công')]
+        previous=[self.table.horizontalHeaderItem(c).text() for c in range(self.table.columnCount())]
+        scroll=(self.table.horizontalScrollBar().value(),self.table.verticalScrollBar().value())
         self.table.setUpdatesEnabled(False)
         try:
             self.table.setColumnCount(len(headers));self.table.setHorizontalHeaderLabels(headers)
+            if not people:
+                for col in [2,3,4]+list(range(11,len(headers))):
+                    self.table.horizontalHeaderItem(col).setToolTip('Số liệu trực tiếp theo Station; nhân viên là người thao tác được ánh xạ từ Task.')
             self.table.setRowCount(len(view['rows']))
             for row,r in enumerate(view['rows']):
                 employee=self._employee_key(r)
-                name_col=0 if self.tab in ('Sort','Check','Pack') else 5
-                for col,value in enumerate(make(r)):
+                name=r.get('name' if people else 'operatorName') or 'Chưa xác định'
+                email=r.get('email' if people else 'operatorEmail') or '—'
+                totals=r.get('apiTotals',{})
+                values=[str(row+1),name+'\n'+email,whole(totals.get('item_count',{}).get('qty')),
+                        whole(totals.get('order_count',{}).get('qty')),
+                        fmt(totals.get(unit if people else 'item_count',{}).get('hours')) if 'apiTotals' in r else fmt(r.get('manHour'))]
+                if self.tab in ('Sort','Check'):values += [fmt(r.get('productivity')),fmt(target)]
+                elif self.tab=='Pack':values += [fmt(r.get(k)) for k in ('items','orders','hPrev','hCur')]+[r.get('stationId'),r.get('stationName')]
+                else:values += [r.get('stationId'),r.get('stationName')]+[fmt(r.get(k)) for k in ('prod','staffProd','hPrev','hCur')]
+                for exact in r.get('hourly',[]):
+                    values += [whole(exact.get('item_count',{}).get('qty')),whole(exact.get('order_count',{}).get('qty')),
+                               fmt(exact.get('item_count',{}).get('hours'))]
+                values += ['—'] * (len(headers)-len(values))
+                for col,value in enumerate(values):
                     item=QTableWidgetItem(str(value) if value is not None else '—')
                     item.setData(Qt.ItemDataRole.UserRole,employee)
-                    if col==name_col and employee:
-                        item.setToolTip('Bấm tên để tô sáng tất cả dòng của nhân viên; bấm lại để bỏ tô sáng.')
-                    if col and isinstance(value,str) and re.fullmatch(r'\d+\.\d+',value):item.setTextAlignment(Qt.AlignmentFlag.AlignRight|Qt.AlignmentFlag.AlignVCenter)
+                    if col==1:
+                        item.setToolTip(name+'\n'+email+'\nBấm để tô sáng nhân viên.')
+                    else:item.setTextAlignment(Qt.AlignCenter)
                     self.table.setItem(row,col,item)
-            self._apply_employee_highlight()
+            if previous!=headers:
+                for col in range(len(headers)):self.table.setColumnWidth(col,54 if col==0 else 250 if col==1 else 110)
+            self.table.sync_frozen();self._apply_employee_highlight()
+            self.table.horizontalScrollBar().setValue(scroll[0]);self.table.verticalScrollBar().setValue(scroll[1])
         finally:self.table.setUpdatesEnabled(True)
 
     def _display_empty(self):
@@ -557,7 +642,7 @@ class CheckProdTab(QWidget):
         ws.append([self.table.horizontalHeaderItem(i).text() for i in range(self.table.columnCount())])
         for i in range(self.table.rowCount()):
             ws.append([self.table.item(i,j).text() if self.table.item(i,j) else '' for j in range(self.table.columnCount())])
-        ws.freeze_panes='A2';wb.save(path)
+        ws.freeze_panes='C2';wb.save(path)
 
     def _mapping(self):
         choice=QMessageBox(self)

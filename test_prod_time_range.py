@@ -23,10 +23,8 @@ class SelectedTimeWindowTests(unittest.TestCase):
         self.w=CheckProdTab(FakeBridge(),{},lambda _:True)
         self.w.show();self.app.processEvents()
         self.w.date.setDate(QDate(2026,10,21))
-        self.w.from_time.setTime(QTime(8,0))
-        index=self.w.to_time.findData('19:00')
-        self.assertGreaterEqual(index,0)
-        self.w.to_time.setCurrentIndex(index)
+        self.w.from_time.setText('08:00')
+        self.w.to_time.setText('18:59')
         self.app.processEvents()
         self.now=int(datetime(2026,10,21,22,30,tzinfo=VN_TZ).timestamp())
         self.start=int(datetime(2026,10,21,8,0,tzinfo=VN_TZ).timestamp())
@@ -51,14 +49,14 @@ class SelectedTimeWindowTests(unittest.TestCase):
         self.assertEqual(second['body']['query_column'],'order_count')
         self.assertEqual(second['body']['from_time'],self.start)
         self.assertEqual(second['body']['to_time'],self.end)
-    def test_window_switch_hides_stale_results(self):
+    def test_window_edit_keeps_last_snapshot(self):
         self.w.cache_key=self.w._view_key()
         self.w.rows=[{'name':'Test','email':'a@wms','productivity':20,'items':100,'manHour':5}]
         self.w._render()
         self.assertEqual(self.w.table.rowCount(),1)
-        self.w.from_time.setTime(QTime(9,0))
+        self.w.from_time.setText('09:00')
         self.app.processEvents()
-        self.assertEqual(self.w.table.rowCount(),0)
+        self.assertEqual(self.w.table.rowCount(),1)
         self.assertFalse(self.w.cache_key==self.w._view_key())
     def test_exact_api_quantities_avoid_rounded_prod_loss(self):
         rows=core.merge_rows([{'staff_email':'x@wms','productivity':83.11,'man_hour':3.28,'sum_count':274}],

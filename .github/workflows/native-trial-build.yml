@@ -1,16 +1,5 @@
 name: Build IntraCity 3.4 Native Trial
 on:
-  push:
-    branches:
-      - codex/intracity-34-native-ui-tests
-    paths:
-      - .github/workflows/native-trial-build.yml
-      - chrome_cot.py
-      - productivity_tab.py
-      - release_notes.py
-      - intra_2_3_COT_Dashboard_loginfix.py
-      - test_*.py
-      - build_windows.ps1
   workflow_dispatch:
 permissions:
   contents: read

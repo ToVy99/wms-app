@@ -8,7 +8,7 @@ import copy
 import tempfile
 import unittest
 from unittest.mock import patch
-from PySide6.QtCore import QObject, Signal, Qt
+from PySide6.QtCore import QObject, Signal, Qt, QDate
 from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QApplication, QTabBar, QLabel, QPushButton, QLineEdit
 from productivity_tab import CheckProdTab, TABS
@@ -101,13 +101,13 @@ class NativeProdLayoutTests(unittest.TestCase):
         self.app.processEvents()
 
     def row_for_email(self,email):
-        w=self.widget;col=1 if w.tab in ('Sort','Check','Pack') else 6
-        return next(r for r in range(w.table.rowCount()) if w.table.item(r,col).text()==email)
+        w=self.widget;col=1
+        return next(r for r in range(w.table.rowCount()) if w.table.item(r,col).text().split('\n',1)[-1]==email)
 
     def assert_highlighted(self,email):
-        w=self.widget;email_col=1 if w.tab in ('Sort','Check','Pack') else 6
+        w=self.widget;email_col=1
         for row in range(w.table.rowCount()):
-            expected=email is not None and w.table.item(row,email_col).text().strip().casefold()==email
+            expected=email is not None and w.table.item(row,email_col).text().split('\n',1)[-1].strip().casefold()==email
             for col in range(w.table.columnCount()):
                 item=w.table.item(row,col)
                 self.assertEqual(item.font().bold(),expected)
@@ -117,7 +117,7 @@ class NativeProdLayoutTests(unittest.TestCase):
         for tab in TABS:
             with self.subTest(tab=tab):
                 self.load_staff(tab)
-                w=self.widget;name_col=0 if tab in ('Sort','Check','Pack') else 5
+                w=self.widget;name_col=1
                 before=copy.deepcopy(w.rows)
                 metrics={key:value.text() for key,value in w.metric_values.items()}
                 self.click_cell(self.row_for_email('an@example.com'),name_col)
@@ -136,7 +136,7 @@ class NativeProdLayoutTests(unittest.TestCase):
     def test_highlight_survives_sort_filter_refresh_theme_and_preserves_export(self):
         from openpyxl import load_workbook
         self.load_staff('Check Station');w=self.widget
-        self.click_cell(self.row_for_email('an@example.com'),5)
+        self.click_cell(self.row_for_email('an@example.com'),1)
         w._flip();w.show_all.setChecked(False);w._render()
         for light in (True,False):
             w.set_theme(light);self.assert_highlighted('an@example.com')
@@ -157,12 +157,13 @@ class NativeProdLayoutTests(unittest.TestCase):
         self.load_staff('Check Station');w=self.widget
         self.click_cell(0,0);self.assert_highlighted(None)
         w.rows=[dict(stationId='CS00001',prod=10,manHour=1,items=10)]
-        w._render();self.click_cell(0,5);self.assert_highlighted(None)
+        w._render();self.click_cell(0,1);self.assert_highlighted(None)
 
     def test_email_input_removed_but_existing_api_email_preserved(self):
         w=self.widget
         self.assertFalse(any('Email WMS' in field.placeholderText() for field in w.findChildren(QLineEdit)))
         self.assertFalse(hasattr(w,'email'))
+        w.date.setDate(QDate(2026,10,20));w.from_time.setText('07:00');w.to_time.setText('18:59')
         for email in ('',' saved@example.com '):
             with self.subTest(email=email):
                 w.prefs['loginEmail']=email;self.bridge.connected=True
