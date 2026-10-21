@@ -15,7 +15,7 @@ from pathlib import Path
 from urllib.parse import urlsplit
 
 from PySide6.QtCore import QObject, QThread, Signal, Slot, QTimer, QDate, Qt
-from PySide6.QtWidgets import (QApplication, QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QLabel, QComboBox, QDateEdit, QTableWidget, QTableWidgetItem, QAbstractItemView, QHeaderView, QDialog, QDialogButtonBox, QTimeEdit, QLineEdit, QTextEdit, QMessageBox, QGridLayout, QFrame, QProgressBar, QSizePolicy, QFileDialog, QMenu)
+from PySide6.QtWidgets import (QApplication, QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QLabel, QComboBox, QDateEdit, QTableWidget, QTableWidgetItem, QAbstractItemView, QHeaderView, QDialog, QDialogButtonBox, QTimeEdit, QLineEdit, QTextEdit, QMessageBox, QGridLayout, QFrame, QProgressBar, QSizePolicy, QScrollArea, QFileDialog, QMenu)
 from playwright.sync_api import sync_playwright
 from cot_logic import DEFAULT_CONFIG, time_range, export_body, choose_job, parse_report, status_name, progress, URL_EXPORT_LIST, URL_EXPORT, URL_ORDER
 from cot_widgets import CopyTable, SlidingOrders, LoadingSpinner
@@ -29,6 +29,11 @@ API_PATHS = {
     '/api/v2/apps/basic/reportcenter/create_export_task',
     '/api/v2/apps/basic/reportcenter/search_export_task',
     '/api/v2/apps/process/taskcenter/pickingtask/search_sales_sub_picking_task',
+    # Check Prod: same WMS tab/session as COT and SKU; never a second login.
+    '/mgmt/api/wms_pc/forward_wms_be/api/v2/openapi/mgmt/workspace/pc/data_wms__warehouse_operation_whs__outbound_productivity_info_ri',
+    '/api/v2/apps/process/taskcenter/checkingtask/search_checking_task',
+    '/api/v2/apps/process/taskcenter/sortingtask/search_sorting_task',
+    '/api/v2/apps/process/outbound/packing/search_packing_task',
 }
 
 
@@ -154,7 +159,7 @@ class ChromeWorker(QThread):
             with sync_playwright() as pw:
                 browser = pw.chromium.launch(channel='chrome', headless=False, timeout=15000)
                 try:
-                    context = browser.new_context()
+                    context = browser.new_context(no_viewport=True)
                     context.expose_binding('__intraSkuCancelled',lambda source,rid:self.sku_cancelled(rid))
                     context.expose_binding('__intraSkuProgress',lambda source,rid,message:self._sku_progress(rid,message))
                     page = context.new_page()
@@ -459,10 +464,23 @@ class ChromeCotTab(QWidget):
         self.dataset_note=QLabel(); self.dataset_note.setWordWrap(True); self.dataset_note.hide()
         self.dataset_note.setStyleSheet('color:#f9e2af; font-size:11px; padding:2px;')
         lower.addWidget(self.dataset_note)
-        self.area_summary=QLabel(); self.area_summary.setWordWrap(True)
-        self.area_summary.setStyleSheet('color:#a4e7ff; background:#202d42; border:1px solid #3d597c; border-radius:7px; padding:4px; font-weight:700;')
-        self.area_summary.setToolTip('Đếm đơn theo trạng thái và bộ lọc mã rổ đang chọn, trước lọc khu/Wave/tìm kiếm. Một đơn có nhiều khu được tính một lần ở mỗi khu; tổng các khu có thể lớn hơn số đơn.')
+        self.area_summary=QLabel('KHU VỰC'); self.area_summary.setWordWrap(True)
+        self.area_summary.setStyleSheet('color:#a4e7ff; font-weight:700;')
+        self.area_summary.setToolTip('Đếm theo trạng thái và mã rổ đang chọn; không làm thay đổi KPI COT. Một đơn ở nhiều khu có thể được đếm trong từng khu.')
         lower.addWidget(self.area_summary)
+        self.area_buttons_host=QWidget()
+        self.area_buttons_layout=QHBoxLayout(self.area_buttons_host)
+        self.area_buttons_layout.setContentsMargins(1,1,1,1)
+        self.area_buttons_layout.setSpacing(5)
+        self.area_buttons_scroll=QScrollArea()
+        self.area_buttons_scroll.setWidgetResizable(True)
+        self.area_buttons_scroll.setFrameShape(QFrame.Shape.NoFrame)
+        self.area_buttons_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        self.area_buttons_scroll.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.area_buttons_scroll.setFixedHeight(43)
+        self.area_buttons_scroll.setWidget(self.area_buttons_host)
+        self.area_buttons_host.setSizePolicy(QSizePolicy.Policy.MinimumExpanding,QSizePolicy.Policy.Fixed)
+        lower.addWidget(self.area_buttons_scroll)
         self.actions_button=QPushButton('Thao tác ▾'); self.actions_menu=QMenu(self)
         for label,fn in [('Chọn các đơn đang hiện',self.select_visible),('Bỏ chọn',self.clear_selection),('Copy OBVN',self.copy_obvn),('Picking ID / BSK',self.show_tasks)]:
             self.actions_menu.addAction(label,fn)
@@ -702,6 +720,7 @@ class ChromeCotTab(QWidget):
         groups=' · '.join(f'{k}: {n:,}'.replace(',','.') for k,n in sorted(area_counts.items()) if k!='-')
         missing=len(src)-known
         self.area_summary.setText(f'KHU VỰC · {scope} · '+(groups or 'Chưa có dữ liệu khu')+f'  |  Có Area: {known}/{len(src)} · Chưa có Area: {missing}')
+        self.update_area_buttons(area_counts, len(src))
         for combo,field,active in [(self.area,'area',self.active_area),(self.wave,'wave_type',self.active_wave)]:
             combo.blockSignals(True); combo.clear(); combo.addItem(f'Tất cả ({len(src)})',None)
             counts=area_counts if field=='area' else Counter((o[field] or '-') for o in src)
@@ -714,9 +733,38 @@ class ChromeCotTab(QWidget):
             combo.setToolTip(combo.currentText())
         self.render_table()
 
+    def update_area_buttons(self, counts, total):
+        # Presentation-only: status counts derive from status_orders(), NOT from COT KPI.
+        while self.area_buttons_layout.count():
+            item=self.area_buttons_layout.takeAt(0)
+            if item.widget():item.widget().deleteLater()
+        choices=[(None, f'Tất cả · {total}')]
+        if self.active_area is not None and self.active_area not in counts:
+            choices.append((self.active_area, ('Chưa có Area' if self.active_area=='-' else 'Khu '+self.active_area)+' · 0'))
+        choices += [(area, ('Chưa có Area' if area == '-' else 'Khu '+area)+f' · {count}')
+                    for area,count in sorted(counts.items())]
+        for area,label in choices:
+            button=QPushButton(label)
+            button.setCheckable(True)
+            button.setChecked(self.active_area==area)
+            button.setMinimumHeight(30)
+            button.setStyleSheet('QPushButton {background:#202d42; color:#cbdaf5; border:1px solid #3d597c; border-radius:7px; padding:4px 9px;} QPushButton:checked {background:#174f77; color:#ffffff; border:2px solid #80c5ff;} QPushButton:hover {background:#315276;}')
+            button.setToolTip('Bấm để '+('bỏ lọc Area' if area is None else 'chỉ xem đơn thuộc khu '+area)+' trong trạng thái hiện tại')
+            button.clicked.connect(lambda checked, key=area: self.choose_area(key))
+            self.area_buttons_layout.addWidget(button)
+        self.area_buttons_host.setMinimumWidth(sum(max(90,len(label)*8+24) for _,label in choices)+9*len(choices))
+        self.area_buttons_layout.addStretch(1)
+
+    def choose_area(self, area):
+        if self.busy:return
+        self.active_area=None if area==self.active_area else area
+        self.selected.clear()
+        # Reuses the original status + Area + Wave + search filters.
+        self.render_all()
+
     def select_status(self,code):
         if self.busy: return
-        self.active_status=code; self.active_area=self.active_wave=None; self.picked_baskets_only=False; self.render_all()
+        self.active_status=code; self.active_wave=None; self.picked_baskets_only=False; self.render_all()
         if code is not None and str(code) not in self.area_loaded and any(o['area']=='-' for o in self.status_orders()):
             self.set_busy(True); self.set_stage('Đang nạp Area…'); self.area_map={}; self.area_page=1; self.area_code=code
             _,c,beg,end=self.loaded_scope or self.current_range()
@@ -748,7 +796,7 @@ class ChromeCotTab(QWidget):
     def toggle_picked_baskets(self,checked):
         if self.busy: return
         self.picked_baskets_only=bool(checked); self.active_status=3
-        self.active_area=self.active_wave=None; self.selected.clear()
+        self.active_wave=None; self.selected.clear()
         self.render_all()
         self.message.setText(('Đang lọc Picked có mã rổ' if checked else 'Đang hiện tất cả đơn Picked')+f' · {len(self.visible())} '+('mã rổ không trùng' if checked else 'đơn')+' · từ dữ liệu đã tải')
 

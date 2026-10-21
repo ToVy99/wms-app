@@ -4,7 +4,11 @@ const jobs=new Map();
 const emit=message=>chrome.runtime.sendMessage(message);
 window.__intraSkuCancelled=async id=>!jobs.has(id)||jobs.get(id).cancelled;
 window.__intraSkuProgress=async(id,text)=>{if(jobs.has(id))await emit({kind:'progress',id,text});};
-const allowed=new Set(['/api/v2/apps/process/outbound/salesorder/search_order','/api/v2/apps/basic/reportcenter/create_export_task','/api/v2/apps/basic/reportcenter/search_export_task','/api/v2/apps/process/taskcenter/pickingtask/search_sales_sub_picking_task']);
+const allowed=new Set(['/api/v2/apps/process/outbound/salesorder/search_order','/api/v2/apps/basic/reportcenter/create_export_task','/api/v2/apps/basic/reportcenter/search_export_task','/api/v2/apps/process/taskcenter/pickingtask/search_sales_sub_picking_task',
+'/mgmt/api/wms_pc/forward_wms_be/api/v2/openapi/mgmt/workspace/pc/data_wms__warehouse_operation_whs__outbound_productivity_info_ri',
+'/api/v2/apps/process/taskcenter/checkingtask/search_checking_task',
+'/api/v2/apps/process/taskcenter/sortingtask/search_sorting_task',
+'/api/v2/apps/process/outbound/packing/search_packing_task']);
 const cotFetch=async ({url, method, body, binary}) => {
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), binary ? 90000 : 25000);

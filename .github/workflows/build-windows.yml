@@ -6,6 +6,8 @@ on:
       - '*.py'
       - 'requirements-build.txt'
       - 'build_windows.ps1'
+      - 'productivity/**'
+      - 'wms_bridge_*.js'
       - '.github/workflows/build-windows.yml'
 permissions:
   contents: read

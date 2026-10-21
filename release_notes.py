@@ -3,14 +3,23 @@ from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QDialog, QVBoxLayout, QTextBrowser, QPushButton, QMessageBox
 
 VERSION='3.4'
-RELEASE_ID='3.4-compact-bridge-fix-20261017'
+RELEASE_ID='3.4-checkprod-native-beta-20261021'
 TITLE='IntraCity 3.4'
 NOTES='''<h2>Có gì mới trong IntraCity 3.4?</h2>
+<p><b>Bổ sung Check Prod trong bản thử nghiệm 3.4:</b></p>
+<ul>
+<li><b>Check Prod:</b> Một tab chức năng cạnh Excel / Outbound, mở bảng năng suất Sort, Check, Check Station, Check&amp;Pack, Pack trong cùng cửa sổ IntraCity.</li>
+<li><b>Một phiên Chrome/WMS:</b> Check Prod dùng cầu nối Chrome đã đăng nhập của IntraCity, không yêu cầu đăng nhập riêng. Bổ sung tự kết nối lại sau khi tab WMS tải lại nếu phiên còn hợp lệ.</li>
+<li><b>Việt hóa giao diện:</b> giữ thuật ngữ chuyên môn Item, Order, Prod, Station, BAU, CP, Target…</li>
+<li><b>Đảo thứ tự Prod:</b> nút Cao → Thấp / Thấp → Cao sắp xếp danh sách hiển thị, không sửa công thức.</li>
+<li><b>Lọc Area bằng nút:</b> nhấn khu A để chỉ xem đơn thuộc khu A của trạng thái đang chọn, kể cả Picked. Đổi trạng thái giữ lựa chọn khu; các KPI COT không đổi.</li>
+<li><b>Giao diện gốc IntraCity:</b> Check Prod được viết bằng PySide6, tự theo giao diện Sáng/Tối, không nhúng Chromium hoặc Electron và không còn chiều rộng cố định.</li>
+</ul>
 <p><b>Bổ sung ngày 17/10:</b></p>
 <ul>
 <li>Hoạt ảnh tải nằm gọn bên phải nút ⋯, cùng hàng với Lưu Excel gốc.</li>
 <li>Nới rộng Wave Type, thu gọn ô tìm đơn; rê chuột để xem đầy đủ nội dung.</li>
-<li>Đồng bộ trạng thái kết nối; ngắt cầu nối khi đóng hoặc tải lại tab WMS. Thêm nút Ngắt kết nối trong app.</li>
+<li>Đồng bộ trạng thái kết nối; ngắt khi đóng tab WMS, thử tự khôi phục sau khi tab tải lại nếu phiên còn hợp lệ. Thêm nút Ngắt kết nối trong app.</li>
 <li>Thêm nút Lưu tiện ích (.zip) ngay trong cửa sổ kết nối. Chỉ cần gửi EXE cho người dùng.</li>
 </ul>
 <p><b>Các thay đổi của bản 3.4:</b></p>

@@ -2,7 +2,7 @@ BỔ SUNG 17/10 — INTRACITY 3.4
 - Hoạt ảnh tải nằm cùng hàng, bên phải nút ⋯.
 - Wave Type rộng hơn; rê chuột để xem đủ nội dung.
 - Cửa sổ kết nối hiển thị đúng trạng thái và có nút Ngắt kết nối.
-- Khi tab WMS đóng hoặc tải lại, chọn đúng kho rồi kết nối lại tiện ích.
+- Khi tab WMS tải lại, tiện ích thử tự kết nối lại vào đúng tab nếu phiên còn hợp lệ; đóng tab/đăng xuất vẫn ngắt.
 - Trong app chọn Đăng nhập WMS > Dùng Chrome đang mở qua tiện ích > Lưu tiện ích (.zip). Không cần tải ZIP riêng.
 - Nếu đã cài tiện ích từ bản trước: mở cửa sổ kết nối trong app để cập nhật thư mục, sau đó vào chrome://extensions và bấm Tải lại tiện ích. Nếu cài từ thư mục tự giải nén, lưu ZIP mới và cập nhật đúng thư mục đó.
 
@@ -29,7 +29,7 @@ Những lần sau:
 - Mở app > Đăng nhập WMS > Dùng Chrome đang mở qua tiện ích.
 - Trong tiện ích, chọn tab WMS và bấm Kết nối. Không phải đăng nhập lại nếu
   phiên WMS của tab đó còn hiệu lực.
-- Khi tải lại/đóng tab hoặc thay đổi kho làm trang tải lại, kết nối lại tiện ích.
+- Sau khi tab WMS tải lại, app thử tự khôi phục vào cùng tab; nếu đăng xuất, đóng tab hoặc chọn kho khác thất bại thì kết nối lại thủ công.
 - Nếu đổi vị trí file EXE, chọn lại cách kết nối tiện ích trong app để cập nhật
   đường dẫn cầu nối. Nếu cập nhật tiện ích, bấm nút Tải lại trên chrome://extensions.
 - Nếu máy công ty chặn cài tiện ích, cách Mở Chrome riêng vẫn dùng như trước.

@@ -1,10 +1,12 @@
 const HOST='vn.intracity.wms_bridge';
 let port=null,selectedTab=null,connected=false,lastError='',heartbeat=null;
+let reloadTab=null, reloading=false;
 const active=new Map();
 function send(message){try{if(port)port.postMessage(message);}catch(_){} }
 function status(){return {connected,tabId:selectedTab,error:lastError,busy:active.size>0};}
 function fail(id,error){send({kind:'result_start',id});send({kind:'result_chunk',id,seq:0,text:JSON.stringify({success:false,error})});send({kind:'result_end',id,count:1});active.delete(id);}
 async function disconnect(reason='Đã ngắt kết nối. Chọn tab WMS rồi bấm Kết nối khi cần.'){
+  if(!reloading)reloadTab=null; // Manual disconnect must not reconnect automatically.
   for(const [id,tabId] of active)chrome.tabs.sendMessage(tabId,{kind:'cancel',id}).catch(()=>{});
   send({kind:'state',connected:false,text:reason});
   active.clear();connected=false;selectedTab=null;lastError=reason;
@@ -12,6 +14,7 @@ async function disconnect(reason='Đã ngắt kết nối. Chọn tab WMS rồi 
   const old=port;port=null;if(old)old.disconnect();
 }
 async function connect(tabId){
+  if(!reloading)reloadTab=null;
   if(active.size)throw new Error('Đang tải; hãy đợi hoàn tất hoặc Dừng tìm trước khi đổi tab.');
   const tab=await chrome.tabs.get(tabId);
   if(!tab.url?.startsWith('https://wms.ssc.shopee.vn/'))throw new Error('Hãy chọn tab WMS.');
@@ -62,9 +65,28 @@ chrome.runtime.onMessage.addListener((message,sender,reply)=>{
   if(message.kind==='connect'){connect(Number(message.tabId)).then(()=>reply(status())).catch(e=>{lastError=e.message;reply(status());});return true;}
   if(message.kind==='disconnect'){disconnect().then(()=>reply(status()));return true;}
 });
-function tabLost(tabId){
-  if(tabId!==selectedTab)return;
-  disconnect('Tab WMS đã đóng hoặc tải lại. Hãy chọn đúng kho rồi kết nối lại.');
-}
-chrome.tabs.onRemoved.addListener(tabLost);
-chrome.tabs.onUpdated.addListener((id,change)=>{if(change.status==='loading')tabLost(id);});
+// Preserve selected WMS tab across reload, but never reauthenticate or resurrect a
+// manually disconnected session. Auto-restore only after that same tab finishes loading.
+chrome.tabs.onRemoved.addListener(id=>{
+  if(id!==selectedTab && id!==reloadTab)return;
+  reloadTab=null;
+  disconnect('Tab WMS đã đóng. Hãy mở tab WMS rồi kết nối lại.');
+});
+chrome.tabs.onUpdated.addListener((id,change,tab)=>{
+  if(change.status==='loading' && id===selectedTab){
+    reloadTab=id; reloading=true;
+    disconnect('Tab WMS đang tải lại; sẽ thử tự kết nối khi hoàn tất.')
+      .finally(()=>{reloading=false;});
+  }
+  if(change.status==='complete' && id===reloadTab){
+    const wanted=reloadTab;
+    if(!tab.url?.startsWith('https://wms.ssc.shopee.vn/') ||
+      /\/(login|signin|sso|auth)(\/|$)/i.test(new URL(tab.url).pathname)){
+      reloadTab=null;return;
+    }
+    reloadTab=null;
+    // Reconnect uses the original selected tab. Failure leaves WMS disconnected,
+    // so the user can correct their login or warehouse selection manually.
+    connect(wanted).catch(e=>{lastError=e.message;});
+  }
+});

@@ -53,9 +53,9 @@ def main():
             try:
                 assert not app.windowIcon().isNull()
                 assert not window.windowIcon().isNull()
-                assert window.mainTabs.count()==2
+                assert window.mainTabs.count()==3
                 assert window.mainTabs.tabBar().isHidden()
-                assert window.topTabs.count()==2
+                assert window.topTabs.count()==3
                 from extension_bridge import ASSETS
                 assert all(Path(__file__).resolve().with_name(name).is_file() for name in ASSETS.values())
                 import tempfile,zipfile
@@ -73,6 +73,11 @@ def main():
                 assert window.sku_dialog.searcher.counter==0
                 window.sku_dialog.grab().save('smoke-sku.png')
                 window.sku_dialog.close()
+                assert window.cotTab.bridge.worker is None
+                window.open_check_prod()
+                assert window.check_prod_tab is not None
+                assert window.check_prod_tab.bridge is window.cotTab.bridge
+                assert window.mainTabs.currentIndex()==2
                 assert window.cotTab.bridge.worker is None
                 assert not hasattr(intra,'COTOrderListThread')
                 assert not hasattr(intra,'_wms_post')
@@ -112,7 +117,7 @@ def main():
                     assert parallel_result['requests']==3
                     browser.close()
                 window.set_banner_status(False,custom_msg='Chrome transport + native COT verified')
-                finish({'passed':True,'tabs':2,'logic_version':'1.4','native_ui':True,'startup_wms_requests':0,
+                finish({'passed':True,'tabs':3,'logic_version':'1.4','native_ui':True,'startup_wms_requests':0,
                         'legacy_api_removed':True,'chrome_same_origin_fetch':'passed',
                         'chrome_session_cookie':'passed','real_wms_requests':0})
             except Exception as exc:

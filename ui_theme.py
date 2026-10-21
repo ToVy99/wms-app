@@ -97,6 +97,9 @@ class ThemeController(QObject):
                     new=light_css(dark) if light else dark
                     if css!=new:w.setStyleSheet(new)
                     w.setProperty('_themeLastCss',new)
+            # Embedded Check Prod follows the same appearance selection (presentation only).
+            prod=getattr(self.window,'check_prod_tab',None)
+            if prod is not None: prod.set_theme(light)
             # Charts are painted by Matplotlib instead of Qt stylesheets.
             for canvas in self.window.findChildren(QWidget):
                 if hasattr(canvas,'set_light_theme'):canvas.set_light_theme(light)

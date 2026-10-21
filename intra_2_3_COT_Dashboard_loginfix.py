@@ -761,6 +761,7 @@ class WMSDashboard(QWidget):
 
         self.setWindowTitle(TITLE)
         self.sku_dialog=None
+        self.check_prod_tab=None
         self.setStyleSheet(MODERN_STYLE)
 
         self.table_model = PandasModel()
@@ -782,6 +783,12 @@ class WMSDashboard(QWidget):
         if '--smoke-test' not in sys.argv:
             QTimer.singleShot(0,lambda:show_changes(self,save_config,automatic=True) if not self._closing else None)
 
+    def _on_top_tab_changed(self, index):
+        if index == 2:
+            self.open_check_prod()
+            return
+        self.mainTabs.setCurrentIndex(index)
+
     def open_sku_finder(self):
         if self.sku_dialog is None:
             self.sku_dialog=SkuTaskDialog(self.cotTab.bridge,self)
@@ -789,6 +796,21 @@ class WMSDashboard(QWidget):
         self.sku_dialog.show();self.sku_dialog.raise_();self.sku_dialog.activateWindow()
         fit_window(self.sku_dialog,980,620)
         self.sku_dialog.input.setFocus()
+
+    def open_check_prod(self):
+        # Lazy init: COT starts exactly as before. WebEngine is only loaded on demand.
+        if self.check_prod_tab is None:
+            try:
+                from productivity_tab import CheckProdTab
+                self.check_prod_tab = CheckProdTab(self.cotTab.bridge,self.config,save_config,self)
+                self.check_prod_tab.set_theme(self.theme_controller.light)
+                self.mainTabs.removeTab(2)
+                self.mainTabs.insertTab(2,self.check_prod_tab,'📊 Check Prod')
+            except Exception as exc:
+                QMessageBox.warning(self,'Check Prod','Không mở được Check Prod: '+str(exc))
+                return
+        self.mainTabs.setCurrentIndex(2)
+        self.topTabs.setCurrentIndex(2)
 
     def check_for_updates(self):
         if self._closing:return
@@ -917,11 +939,21 @@ del /F /Q "{backup_exe}" >nul 2>&1
         header_left=QWidget()
         left_header=QHBoxLayout(header_left); left_header.setContentsMargins(0,0,0,0); left_header.setSpacing(4)
         header_right=QWidget(); right_header=QHBoxLayout(header_right); right_header.setContentsMargins(0,0,0,0); right_header.setSpacing(4)
-        global_top.addWidget(header_left,1)
-        self.topTabs=QTabBar(); self.topTabs.addTab('⚡ COT'); self.topTabs.addTab('📊 Excel / Outbound')
-        self.topTabs.setStyleSheet('QTabBar::tab {padding:6px 8px; font-size:12px;}')
-        self.topTabs.setExpanding(False); self.topTabs.setMinimumWidth(210); global_top.addWidget(self.topTabs,0,Qt.AlignCenter)
-        global_top.addWidget(header_right,1,Qt.AlignRight)
+        # Keep the WMS controls and navigation on separate rows. Three navigation
+        # tabs must never be squeezed between the login/status and tool buttons.
+        global_top.addWidget(header_left,0)
+        global_top.addStretch(1)
+        global_top.addWidget(header_right,0,Qt.AlignRight)
+        self.topTabs=QTabBar()
+        self.topTabs.addTab('⚡ COT')
+        self.topTabs.addTab('📊 Excel / Outbound')
+        self.topTabs.addTab('📊 Check Prod')
+        self.topTabs.setObjectName('intraMainNav')
+        self.topTabs.setExpanding(False)
+        self.topTabs.setUsesScrollButtons(False)
+        self.topTabs.setSizePolicy(QSizePolicy.Fixed,QSizePolicy.Fixed)
+        # Equal fixed tab width prevents selection-dependent horizontal jumping.
+        self.topTabs.setStyleSheet('QTabBar#intraMainNav::tab {min-width:130px; max-width:130px; padding:7px 8px; font-size:12px;}')
 
         self.btnLoginWMS = QPushButton("🔑 Đăng nhập WMS")
         self.btnLoginWMS.setObjectName("btnLoginWMS")
@@ -980,9 +1012,16 @@ del /F /Q "{backup_exe}" >nul 2>&1
         self.btnSkuTask.setToolTip('Tra đơn Picked và Picking Task từ SKU/UPC, dùng phiên Chrome WMS hiện tại.')
         right_header.addWidget(self.btnSkuTask)
         self.mainTabs.tabBar().hide()
-        self.topTabs.currentChanged.connect(self.mainTabs.setCurrentIndex)
+        self.topTabs.currentChanged.connect(self._on_top_tab_changed)
         self.mainTabs.currentChanged.connect(self.topTabs.setCurrentIndex)
         self.btnSkuTask.clicked.connect(self.open_sku_finder)
+        navigation=QHBoxLayout()
+        navigation.setContentsMargins(0,0,0,0)
+        navigation.setSpacing(0)
+        navigation.addWidget(self.topTabs)
+        navigation.addStretch(1)
+        root.insertLayout(1,navigation)
+
 
         # ==============================================================
         # TAB 1: COT DASHBOARD
@@ -1157,6 +1196,7 @@ del /F /Q "{backup_exe}" >nul 2>&1
         excel_root.addLayout(body, 1)
 
         self.mainTabs.addTab(self.excelTab, "📊 Excel / Outbound")
+        self.mainTabs.addTab(QWidget(), '📊 Check Prod')  # loaded on first click
 
         self.connection_menu=QMenu(self)
         self.connection_menu.addAction('Mở Chrome riêng / Đăng nhập WMS',lambda:self.choose_wms_connection('chrome'))

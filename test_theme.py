@@ -81,9 +81,16 @@ class ThemeTests(unittest.TestCase):
         for mode in ['dark','light','dark']:
             self.choose(mode)
             for combo in [self.window.combo3PL,self.window.comboState]:
-                QTest.mouseClick(combo.lineEdit(),Qt.LeftButton)
-                QTest.qWait(20)
-                self.assertTrue(combo.view().isVisible())
+                # The Qt 'offscreen' backend does not guarantee visible popups
+                # (and reports unsupported keyboard grabbing on Windows).
+                # Verify the click dispatches showPopup. On an actual screen,
+                # additionally verify the popup is rendered visibly.
+                with patch.object(combo,'showPopup',wraps=combo.showPopup) as show_popup:
+                    QTest.mouseClick(combo.lineEdit(),Qt.LeftButton)
+                    QTest.qWait(20)
+                    show_popup.assert_called_once()
+                if QApplication.platformName() not in ('offscreen','minimal'):
+                    self.assertTrue(combo.view().isVisible())
                 self.assertEqual(combo.model().rowCount(),3)
                 self.assertEqual(len(combo.get_checked_items()),1)
                 self.assertIn('background:#ffffff' if mode=='light' else 'background:#181825',combo.view().styleSheet())

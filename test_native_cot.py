@@ -197,6 +197,14 @@ class NativeTests(unittest.TestCase):
         calls=[]; self.tab.request=lambda m,c:calls.append(m)
         self.tab.selected={'E'}; self.tab.active_area='OTHER'; self.tab.active_wave='OTHER'
         self.tab.basket_filter.click()
+        # IntraCity 3.4: Area must remain selected when the status changes
+        # (including the Picked basket view). An invalid Area returns zero rows.
+        self.assertEqual(self.tab.active_area,'OTHER')
+        self.assertIsNone(self.tab.active_wave)
+        self.assertEqual(self.tab.visible(),[])
+        # Tapping the active Area button again clears only the Area filter.
+        self.tab.choose_area('OTHER')
+        self.assertIsNone(self.tab.active_area)
         self.assertEqual([o['order_number'] for o in self.tab.visible()],['A','A','B'])
         self.assertEqual(self.tab.table.item(0,4).text(),'BSK-A')
         self.assertEqual(self.tab.table.rowCount(),3); self.assertEqual(self.tab.basket_filter.text(),'Picked có mã rổ')
