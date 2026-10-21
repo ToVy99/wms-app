@@ -23,4 +23,4 @@ jobs:
         run: python -m pip install -r requirements-build.txt
       - name: Run native Prod calculation and UI checks
         shell: pwsh
-        run: python -m unittest -v test_native_prod_parity test_checkprod_34_static test_native_ui_static test_prod_native_layout test_native_cot test_theme test_release33 test_sku_finder test_bridge34
+        run: python -m unittest -v test_prod_time_range test_native_prod_parity test_checkprod_34_static test_native_ui_static test_prod_native_layout test_native_cot test_theme test_release33 test_sku_finder test_bridge34

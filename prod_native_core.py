@@ -219,10 +219,13 @@ def build_pack_station_map(tasks):
 
 
 def merge_rows(items,orders,station_map,hours,station_names):
-    orders_by_email={}
+    orders_by_email={};orders_qty={}
     for row in orders or []:
         email=norm(row.get('staff_email'))
-        if email and email not in orders_by_email:orders_by_email[email]=num(row.get('productivity'))
+        if email and email not in orders_by_email:
+            orders_by_email[email]=num(row.get('productivity'))
+            exact=num(row.get('sum_count'))
+            if exact is not None:orders_qty[email]=exact
     out=[];seen=set()
     for item in items or []:
         email=norm(item.get('staff_email'))
@@ -235,6 +238,9 @@ def merge_rows(items,orders,station_map,hours,station_names):
                     'stationId':sid,'stationName':lookup_station(sid,station_names) if sid else None,
                     'hPrev':hour_of(hours.get('prev'),email) if hours else None,
                     'hCur':hour_of(hours.get('cur'),email) if hours else None})
+        exact_item=num(item.get('sum_count'))
+        if exact_item is not None:out[-1]['itemThroughput']=exact_item
+        if email in orders_qty:out[-1]['orderThroughput']=orders_qty[email]
     return out
 
 
@@ -254,7 +260,9 @@ def build_people(items):
                            '_qty':0,'_hours':0,'_missing':0}
         p=people[email]
         if number(prod) and number(mh) and mh>0:
-            p['_qty']+=prod*mh;p['_hours']+=mh
+            exact=num(source.get('sum_count'))
+            p['_qty']+=exact if exact is not None else prod*mh
+            p['_hours']+=mh
         else:p['_missing']+=1
     result=[]
     for p in people.values():
@@ -300,6 +308,8 @@ def summary(rows, tab, unit, below_count):
     src=rows if (people or pack) else [r for r in rows if area_of(r['stationId'])==('Check' if tab=='Check Station' else tab)]
     def qty_of(r):
         if pack:
+            exact=num(r.get('orderThroughput' if is_order else 'itemThroughput'))
+            if exact is not None:return exact
             p=num(r.get('orders' if is_order else 'items'));mh=num(r.get('manHour'))
             return p*mh if p is not None and mh is not None else None
         return num(r.get('items'))

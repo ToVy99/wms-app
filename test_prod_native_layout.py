@@ -66,8 +66,8 @@ class NativeProdLayoutTests(unittest.TestCase):
         buttons = (self.widget.bau,self.widget.cp,self.widget.item,self.widget.order,
                    self.widget.shift1,self.widget.shift2)
         for btn in buttons:
-            self.assertEqual(btn.width(),72)
-            self.assertEqual(btn.height(),34)
+            self.assertEqual(btn.width(),68)
+            self.assertEqual(btn.height(),28)
 
     def test_dark_light_styling_and_metric_icons(self):
         icons=[label for label in self.widget.findChildren(QLabel) if label.objectName()=='prodMetricIcon']

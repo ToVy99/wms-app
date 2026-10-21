@@ -85,7 +85,7 @@ class CheckProdTab(QWidget):
         self.setObjectName('checkProdRoot')
         # IntraCity ThemeController styles child inputs/buttons and calls set_theme()
         # for the Check Prod-specific cards and checked-state palette.
-        main=QVBoxLayout(self);main.setContentsMargins(10,8,10,8);main.setSpacing(9)
+        main=QVBoxLayout(self);main.setContentsMargins(8,4,8,4);main.setSpacing(4)
         # WMS connection status is already displayed in IntraCity's shared header;
         # avoid a second status/title strip above Check Prod controls.
         mode_row=QHBoxLayout();main.addLayout(mode_row)
@@ -94,13 +94,13 @@ class CheckProdTab(QWidget):
         self.shift1=QPushButton('Ca 1');self.shift2=QPushButton('Ca 2')
         for button in (self.bau,self.cp,self.item,self.order,self.shift1,self.shift2):
             button.setCheckable(True)
-            button.setFixedSize(72,34)
+            button.setFixedSize(68,28)
             button.setProperty('prodChoice',True)
             button.setCursor(Qt.CursorShape.PointingHandCursor)
-        mode_row.addWidget(self.bau);mode_row.addWidget(self.cp);mode_row.addSpacing(18)
+        mode_row.addWidget(self.bau);mode_row.addWidget(self.cp);mode_row.addSpacing(10)
         mode_row.addWidget(self.item);mode_row.addWidget(self.order)
         mode_row.addStretch();mode_row.addWidget(self.shift1);mode_row.addWidget(self.shift2)
-        self.edit_shifts=QPushButton('⚙ Giờ ca');mode_row.addWidget(self.edit_shifts)
+        self.edit_shifts=QPushButton('⚙ Giờ ca');self.edit_shifts.setFixedHeight(28);mode_row.addWidget(self.edit_shifts)
         self.bau.clicked.connect(lambda:self._set_mode('BAU'))
         self.cp.clicked.connect(lambda:self._set_mode('CP'))
         self.item.clicked.connect(lambda:self._set_unit('item_count'))
@@ -110,25 +110,27 @@ class CheckProdTab(QWidget):
         self.edit_shifts.clicked.connect(self._edit_shifts)
 
         metrics=QFrame();metrics.setObjectName('prodMetrics')
-        metrics_l=QGridLayout(metrics);metrics_l.setContentsMargins(5,5,5,5);metrics_l.setSpacing(10)
+        metrics_l=QGridLayout(metrics);metrics_l.setContentsMargins(0,0,0,0);metrics_l.setSpacing(6)
+        self.metrics_layout=metrics_l;self.metric_cards=[];self._metric_columns=5
         self.metric_values={}
         # Native cards; icons and values are painted by Qt and follow IntraCity's theme.
         metric_defs=[('qty','TỔNG SẢN LƯỢNG','📦'),('weighted','TỔNG PROD','▥'),
                      ('avg','PROD TRUNG BÌNH','◷'),('manHour','GIỜ CÔNG','⏱'),
                      ('below','DƯỚI TARGET','⚠')]
         for i,(key,title,glyph) in enumerate(metric_defs):
-            cell=QFrame();cell.setObjectName('prodMetricCard');cell.setMinimumHeight(93)
-            inner=QHBoxLayout(cell);inner.setContentsMargins(12,12,12,12);inner.setSpacing(13)
+            cell=QFrame();cell.setObjectName('prodMetricCard');cell.setFixedHeight(66)
+            inner=QHBoxLayout(cell);inner.setContentsMargins(8,5,8,5);inner.setSpacing(7)
             symbol=QLabel(glyph);symbol.setObjectName('prodMetricIcon');symbol.setProperty('tone',key)
-            symbol.setAlignment(Qt.AlignmentFlag.AlignCenter);symbol.setFixedSize(50,50)
-            symbol.setFont(QFont('Segoe UI Symbol',21))
+            symbol.setAlignment(Qt.AlignmentFlag.AlignCenter);symbol.setFixedSize(36,36)
+            symbol.setFont(QFont('Segoe UI Symbol',16))
             inner.addWidget(symbol)
-            details=QVBoxLayout();details.setSpacing(6)
+            details=QVBoxLayout();details.setSpacing(1)
             small=QLabel(title);small.setObjectName('prodMetricLabel');details.addWidget(small)
             big=QLabel('—');big.setObjectName('prodMetricValue');details.addWidget(big)
-            details.addStretch(1);inner.addLayout(details,1)
+            inner.addLayout(details,1)
             self.metric_values[key]=big
-            metrics_l.addWidget(cell,i//3,i%3)
+            self.metric_cards.append(cell)
+            metrics_l.addWidget(cell,i//5,i%5)
         main.addWidget(metrics)
 
         # Keep the five work tabs stable; Target actions have their own line so
@@ -140,35 +142,35 @@ class CheckProdTab(QWidget):
         self.tab_select.setUsesScrollButtons(False)
         self.tab_select.setSizePolicy(QSizePolicy.Fixed,QSizePolicy.Fixed)
         for name in TABS:self.tab_select.addTab(name)
-        self.tab_select.setStyleSheet('QTabBar#prodWorkTabs::tab {min-width:95px; max-width:95px; padding:7px 6px;}')
+        self.tab_select.setStyleSheet('QTabBar#prodWorkTabs::tab {min-width:84px; max-width:84px; padding:4px 5px;}')
         work_row.addWidget(self.tab_select)
         work_row.addStretch(1)
         self.tab_select.currentChanged.connect(self._tab_changed)
 
         target_row=QHBoxLayout();main.addLayout(target_row)
         target_row.addWidget(QLabel('Target Prod'))
-        self.target=QLineEdit();self.target.setFixedWidth(74)
+        self.target=QLineEdit();self.target.setFixedWidth(68);self.target.setFixedHeight(28)
         self.target.setToolTip('Target tính theo đơn vị Item hoặc Order đang chọn; không đổi công thức Prod.')
         target_row.addWidget(self.target)
-        self.save_target=QPushButton('Lưu Target');self.save_target.clicked.connect(self._save_target)
+        self.save_target=QPushButton('Lưu Target');self.save_target.setFixedHeight(28);self.save_target.clicked.connect(self._save_target)
         target_row.addWidget(self.save_target)
         target_row.addStretch(1)
-        self.start=QPushButton('↻ Tải dữ liệu');self.start.clicked.connect(self._start)
+        self.start=QPushButton('↻ Tải dữ liệu');self.start.setFixedHeight(30);self.start.clicked.connect(self._start)
         self.start.setObjectName('prodPrimaryAction')
         target_row.addWidget(self.start)
 
         range_row=QHBoxLayout();main.addLayout(range_row)
         range_row.addWidget(QLabel('KHUNG GIỜ BÁO CÁO'))
         self.date=QDateEdit();self.date.setCalendarPopup(True);self.date.setDisplayFormat('dd/MM/yyyy')
-        self.date.setDate(QDate.currentDate());range_row.addWidget(self.date)
+        self.date.setDate(QDate.currentDate());self.date.setFixedHeight(28);range_row.addWidget(self.date)
         range_row.addWidget(QLabel('Từ'))
-        self.from_time=QTimeEdit();self.from_time.setDisplayFormat('HH:mm');range_row.addWidget(self.from_time)
+        self.from_time=QTimeEdit();self.from_time.setDisplayFormat('HH:mm');self.from_time.setFixedHeight(28);range_row.addWidget(self.from_time)
         range_row.addWidget(QLabel('Đến'))
         self.to_time=QComboBox();self.to_time.addItem('Hiện tại','now')
         for h in range(24):
             for m in (0,30):
                 label=f'{h:02d}:{m:02d}';self.to_time.addItem(label,label)
-        range_row.addWidget(self.to_time)
+        self.to_time.setFixedHeight(28);range_row.addWidget(self.to_time)
         range_row.addStretch()
         self.date.dateChanged.connect(self._persist_interval)
         self.from_time.timeChanged.connect(self._persist_interval)
@@ -177,11 +179,11 @@ class CheckProdTab(QWidget):
         filter_row=QHBoxLayout();main.addLayout(filter_row)
         self.show_all=QCheckBox('Hiện tất cả (kể cả đạt Target)');self.show_all.toggled.connect(self._render)
         filter_row.addWidget(self.show_all);filter_row.addStretch()
-        self.direction=QPushButton('↓ Cao → Thấp');self.direction.clicked.connect(self._flip)
+        self.direction=QPushButton('↓ Cao → Thấp');self.direction.setFixedHeight(28);self.direction.clicked.connect(self._flip)
         filter_row.addWidget(self.direction)
-        self.export=QPushButton('Xuất Excel');self.export.clicked.connect(self._export)
+        self.export=QPushButton('Xuất Excel');self.export.setFixedHeight(28);self.export.clicked.connect(self._export)
         filter_row.addWidget(self.export)
-        self.mapping=QPushButton('Station mapping');self.mapping.clicked.connect(self._mapping)
+        self.mapping=QPushButton('Station mapping');self.mapping.setFixedHeight(28);self.mapping.clicked.connect(self._mapping)
         filter_row.addWidget(self.mapping)
 
         self.message=QLabel();self.message.setWordWrap(True);self.message.setObjectName('prodMessage')
@@ -200,6 +202,17 @@ class CheckProdTab(QWidget):
         self.table.horizontalHeader().setStretchLastSection(True)
         main.addWidget(self.table,1)
 
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        if hasattr(self,'metric_cards'):self._reflow_metrics()
+
+    def _reflow_metrics(self):
+        cols=5 if self.width()>=1100 else 3 if self.width()>=700 else 2
+        if cols==self._metric_columns:return
+        for card in self.metric_cards:self.metrics_layout.removeWidget(card)
+        for i,card in enumerate(self.metric_cards):self.metrics_layout.addWidget(card,i//cols,i%cols)
+        self._metric_columns=cols
+
     def set_theme(self, light):
         # Presentation only: formulas, request payloads and data are untouched.
         self._light_theme=bool(light)
@@ -216,9 +229,9 @@ class CheckProdTab(QWidget):
         QWidget#checkProdRoot {{background:{bg}; color:{fg};}}
         QFrame#prodMetrics {{background:transparent; border:none;}}
         QFrame#prodMetricCard {{background:{card}; border:1px solid {border}; border-radius:11px;}}
-        QLabel#prodMetricLabel {{color:{secondary}; font-size:11px; font-weight:600;}}
-        QLabel#prodMetricValue {{color:{fg}; font-size:22px; font-weight:700;}}
-        QLabel#prodMetricIcon {{border-radius:12px; font-size:22px; font-weight:700;}}
+        QLabel#prodMetricLabel {{color:{secondary}; font-size:10px; font-weight:600;}}
+        QLabel#prodMetricValue {{color:{fg}; font-size:17px; font-weight:700;}}
+        QLabel#prodMetricIcon {{border-radius:9px; font-size:16px; font-weight:700;}}
         QLabel#prodMetricIcon[tone="qty"] {{background:{'#e0edff' if light else '#254471'};color:{'#1467c0' if light else '#b7d6ff'};}}
         QLabel#prodMetricIcon[tone="weighted"] {{background:{'#def5eb' if light else '#24483d'};color:{'#127a53' if light else '#a6e3a1'};}}
         QLabel#prodMetricIcon[tone="avg"] {{background:{'#eee3ff' if light else '#3b3155'};color:{'#8040c5' if light else '#cba6f7'};}}
@@ -228,7 +241,7 @@ class CheckProdTab(QWidget):
         QPushButton[prodChoice="true"]:hover {{background:{hover};}}
         QPushButton[prodChoice="true"]:checked {{background:{active};color:{active_text};border-color:{active};}}
         QPushButton[prodChoice="true"]:disabled {{color:{secondary};}}
-        QTabBar#prodWorkTabs::tab {{background:{button};color:{fg};border:1px solid {border};border-radius:5px;padding:7px 6px;min-width:95px;max-width:95px;}}
+        QTabBar#prodWorkTabs::tab {{background:{button};color:{fg};border:1px solid {border};border-radius:5px;padding:4px 5px;min-width:84px;max-width:84px;}}
         QTabBar#prodWorkTabs::tab:selected {{background:{active};color:{active_text};font-weight:700;border-color:{active};}}
         QTabBar#prodWorkTabs::tab:hover:!selected {{background:{hover};}}
         QPushButton#prodPrimaryAction {{background:{active};color:{active_text};border:1px solid {active};font-weight:700;}}
@@ -261,6 +274,11 @@ class CheckProdTab(QWidget):
                                     'from':self.from_time.time().toString('HH:mm'),
                                     'to':self.to_time.currentData()}
         self._save()
+        if hasattr(self,'table'):self._render()
+
+    def _view_key(self):
+        return (self.tab,self.unit,self.date.date().toString('yyyy-MM-dd'),
+                self.from_time.time().toString('HH:mm'),self.to_time.currentData())
 
     def _save_target(self):
         try:value=float(self.target.text())
@@ -284,9 +302,9 @@ class CheckProdTab(QWidget):
         enabled=self.tab in ('Sort','Check','Pack')
         for b in (self.item,self.order):b.setEnabled(enabled)
         self.target.setText(str(self._active_target()))
-        self.date.setEnabled(self.tab in ('Sort','Check'))
-        self.from_time.setEnabled(self.tab in ('Sort','Check'))
-        self.to_time.setEnabled(self.tab in ('Sort','Check'))
+        self.date.setEnabled(True)
+        self.from_time.setEnabled(True)
+        self.to_time.setEnabled(True)
 
     def _set_mode(self,value):
         if self.busy:return
@@ -337,8 +355,8 @@ class CheckProdTab(QWidget):
         end=self.to_time.currentData()
         if end=='now':to_ts=now
         else:
-            to_ts=int(datetime.fromisoformat(day+'T'+end+':00').replace(tzinfo=VN_TZ).timestamp())
-            if to_ts<=from_ts:to_ts+=86400
+            to_ts=int(datetime.fromisoformat(day+'T'+end+':00').replace(tzinfo=VN_TZ).timestamp())-1
+            if to_ts<from_ts:to_ts+=86400
         if from_ts>now:raise ValueError('Giờ bắt đầu không được ở tương lai.')
         if to_ts>now:to_ts=now
         if to_ts<=from_ts:raise ValueError('Giờ kết thúc phải sau giờ bắt đầu.')
@@ -346,29 +364,31 @@ class CheckProdTab(QWidget):
 
     def _load(self, tab, unit, now, email):
         self.warnings=[]
+        interval=self._interval(now)
         if tab in ('Sort','Check'):
-            interval=self._interval(now)
             items=yield from api.fetch_productivity(interval['from'],interval['to'],
                     43 if tab=='Sort' else 41,unit,'individual',email)
             return core.build_people(items)
-        win=core.shift_window(now); hw=core.hour_windows(now)
+        hw=core.hour_windows(interval['to'])
         if tab=='Pack':
-            items=yield from api.fetch_productivity(win['from'],win['to'],42,'item_count','individual',email)
-            orders=yield from api.fetch_productivity(win['from'],win['to'],42,'order_count','individual',email)
+            items=yield from api.fetch_productivity(interval['from'],interval['to'],42,'item_count','individual',email)
+            orders=yield from api.fetch_productivity(interval['from'],interval['to'],42,'order_count','individual',email)
             try:tasks=yield from api.fetch_pack_tasks()
             except api.WMSRequestError as exc:tasks=[];self.warnings.append(str(exc)+' · thiếu Station')
             prev=yield from self._soft_hours(hw['prev'],42,email)
-            cur=yield from self._soft_hours(hw['cur'],42,email,cache=items if hw['cur']['from']==win['from'] and hw['cur']['to']==win['to'] else None)
+            cur=yield from self._soft_hours(hw['cur'],42,email,cache=items if hw['cur']['from']==interval['from'] and hw['cur']['to']==interval['to'] else None)
             return core.merge_rows(items,orders,core.build_pack_station_map(tasks),{'prev':core.hour_map(prev),'cur':core.hour_map(cur)},self.station_names)
-        base={'from':win['from'],'to':win['to']}
+        base=interval
         stations=yield from api.fetch_productivity(base['from'],base['to'],41,'item_count','station',email)
-        if not stations and win['end']!=win['to']:
-            alternate=yield from api.fetch_productivity(base['from'],win['end'],41,'item_count','station',email)
-            if alternate:stations=alternate;base['to']=win['end']
         if not stations:return []
         try:people=yield from api.fetch_productivity(base['from'],base['to'],41,'item_count','individual',email)
         except api.WMSRequestError as exc:people=[];self.warnings.append('Không có dữ liệu nhân viên: '+str(exc))
-        try:tasks=yield from api.fetch_checked_recent(now,core.station_ids(stations))
+        try:
+            if now-interval['to']<120:
+                tasks=yield from api.fetch_checked_recent(now,core.station_ids(stations))
+            else:
+                history=yield from api.fetch_completed_range(interval['from'],interval['to'])
+                tasks={'rows':history['rows'],'partial':history['partial'],'complete':not bool(history['partial'])}
         except api.WMSRequestError as exc:tasks={'rows':[],'partial':str(exc),'complete':False}
         if tasks.get('partial') and not tasks.get('complete'):self.warnings.append('Thiếu Task gần đây: '+tasks['partial'])
         prev=yield from self._soft_hours(hw['prev'],41,email)
@@ -389,12 +409,12 @@ class CheckProdTab(QWidget):
         try:
             target=float(self.target.text())
             if not math.isfinite(target) or target<=0:raise ValueError('Target phải lớn hơn 0.')
-            if self.tab in ('Sort','Check'):self._interval(int(time.time()))
+            self._interval(int(time.time()))
         except (ValueError,TypeError) as exc:QMessageBox.warning(self,'Dữ liệu không hợp lệ',str(exc));return
         self._save_target()
         self.busy=True;self.start.setEnabled(False);self.start.setText('Đang tải…')
         self.message.setText('Đang tải dữ liệu từ WMS…')
-        self._load_key=(self.tab,self.unit)
+        self._load_key=self._view_key()
         self.task=self._load(self.tab,self.unit,int(time.time()),self.prefs.get('loginEmail','').strip())
         self._advance(None,first=True)
 
@@ -480,7 +500,7 @@ class CheckProdTab(QWidget):
         return 'name:'+name if name and name not in ('—','-') else None
 
     def _render(self,*_):
-        current=self.cache_key==(self.tab,self.unit)
+        current=self.cache_key==self._view_key()
         if not current:
             self._display_empty()
             return
