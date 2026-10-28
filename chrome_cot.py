@@ -24,16 +24,17 @@ import copy
 from collections import Counter
 
 ORIGIN = 'https://wms.ssc.shopee.vn'
+
+def chrome_profile_dir():
+    """Persistent per-Windows-user Chrome profile, never part of EXE/source."""
+    base = os.environ.get('LOCALAPPDATA')
+    return (Path(base) if base else Path.home() / 'AppData' / 'Local') / 'IntraCity' / 'ChromeProfile'
+
 API_PATHS = {
     '/api/v2/apps/process/outbound/salesorder/search_order',
     '/api/v2/apps/basic/reportcenter/create_export_task',
     '/api/v2/apps/basic/reportcenter/search_export_task',
     '/api/v2/apps/process/taskcenter/pickingtask/search_sales_sub_picking_task',
-    # Check Prod: same WMS tab/session as COT and SKU; never a second login.
-    '/mgmt/api/wms_pc/forward_wms_be/api/v2/openapi/mgmt/workspace/pc/data_wms__warehouse_operation_whs__outbound_productivity_info_ri',
-    '/api/v2/apps/process/taskcenter/checkingtask/search_checking_task',
-    '/api/v2/apps/process/taskcenter/sortingtask/search_sorting_task',
-    '/api/v2/apps/process/outbound/packing/search_packing_task',
 }
 
 
@@ -157,30 +158,32 @@ class ChromeWorker(QThread):
     def run(self):
         try:
             with sync_playwright() as pw:
-                browser = pw.chromium.launch(channel='chrome', headless=False, timeout=15000)
+                profile_dir = chrome_profile_dir()
+                profile_dir.mkdir(parents=True,exist_ok=True)
+                context = pw.chromium.launch_persistent_context(
+                    user_data_dir=str(profile_dir),channel='chrome',
+                    headless=False,no_viewport=True,timeout=15000)
                 try:
-                    context = browser.new_context(no_viewport=True)
                     context.expose_binding('__intraSkuCancelled',lambda source,rid:self.sku_cancelled(rid))
                     context.expose_binding('__intraSkuProgress',lambda source,rid,message:self._sku_progress(rid,message))
                     page = context.new_page()
                     try:
                         page.goto(ORIGIN, wait_until='domcontentloaded', timeout=20000)
                     except Exception:
-                        if not browser.is_connected():
+                        if not context.pages:
                             raise RuntimeError('Chrome đã đóng.')
-                    self.state.emit(True, 'Chrome đang mở · Đăng nhập và chọn kho, rồi bấm Tải dữ liệu.')
-                    while not self.isInterruptionRequested() and browser.is_connected():
+                    self.state.emit(True, 'Chrome WMS đang mở · Phiên đăng nhập được lưu trong hồ sơ Chrome riêng trên máy.')
+                    while not self.isInterruptionRequested():
                         try:
                             request_id, msg = self.commands.get_nowait()
                         except queue.Empty:
                             try:
                                 pages = [p for p in context.pages if not p.is_closed()]
-                                if not pages:
-                                    break
+                                if not pages:break
                                 pages[-1].wait_for_timeout(100)
                             except Exception:
-                                if not browser.is_connected():
-                                    break
+                                # The persistent context owns Chrome; closing it ends this worker.
+                                break
                             continue
                         try:
                             validate_request(msg)
@@ -208,9 +211,9 @@ class ChromeWorker(QThread):
                         with self._sku_lock:self._sku_events.pop(request_id,None)
                         self.result.emit(request_id, json.dumps(response, ensure_ascii=False))
                 finally:
-                    browser.close()
+                    context.close()
         except Exception as exc:
-            self.state.emit(False, f'Không mở/giữ được Chrome: {exc}')
+            self.state.emit(False, f'Không mở/giữ được Chrome: {exc} · Nếu Chrome đang mở bằng cùng hồ sơ IntraCity, hãy đóng cửa sổ đó rồi thử lại.')
         finally:
             self.cancel_all_sku()
             with self._sku_lock:self._sku_events.clear()
