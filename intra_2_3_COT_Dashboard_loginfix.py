@@ -760,8 +760,7 @@ class WMSDashboard(QWidget):
         self.config = load_config()
 
         self.setWindowTitle(TITLE)
-        self.sku_dialog=None
-        self.check_prod_tab=None
+        self.sku_tab=None
         self.setStyleSheet(MODERN_STYLE)
 
         self.table_model = PandasModel()
@@ -784,33 +783,13 @@ class WMSDashboard(QWidget):
             QTimer.singleShot(0,lambda:show_changes(self,save_config,automatic=True) if not self._closing else None)
 
     def _on_top_tab_changed(self, index):
-        if index == 2:
-            self.open_check_prod()
-            return
+        # Navigation is local; WMS data only loads on an explicit request.
         self.mainTabs.setCurrentIndex(index)
 
     def open_sku_finder(self):
-        if self.sku_dialog is None:
-            self.sku_dialog=SkuTaskDialog(self.cotTab.bridge,self)
-        self.theme_controller.apply()
-        self.sku_dialog.show();self.sku_dialog.raise_();self.sku_dialog.activateWindow()
-        fit_window(self.sku_dialog,980,620)
-        self.sku_dialog.input.setFocus()
-
-    def open_check_prod(self):
-        # Lazy init: COT starts exactly as before. WebEngine is only loaded on demand.
-        if self.check_prod_tab is None:
-            try:
-                from productivity_tab import CheckProdTab
-                self.check_prod_tab = CheckProdTab(self.cotTab.bridge,self.config,save_config,self)
-                self.check_prod_tab.set_theme(self.theme_controller.light)
-                self.mainTabs.removeTab(2)
-                self.mainTabs.insertTab(2,self.check_prod_tab,'📈 Check Prod')
-            except Exception as exc:
-                QMessageBox.warning(self,'Check Prod','Không mở được Check Prod: '+str(exc))
-                return
         self.mainTabs.setCurrentIndex(2)
         self.topTabs.setCurrentIndex(2)
+        self.sku_tab.input.setFocus()
 
     def check_for_updates(self):
         if self._closing:return
@@ -947,7 +926,7 @@ del /F /Q "{backup_exe}" >nul 2>&1
         self.topTabs=QTabBar()
         self.topTabs.addTab('⚡ COT')
         self.topTabs.addTab('📊 Excel / Outbound')
-        self.topTabs.addTab('📈 Check Prod')
+        self.topTabs.addTab('🔍 Tìm SKU')
         self.topTabs.setObjectName('intraMainNav')
         self.topTabs.setExpanding(False)
         self.topTabs.setUsesScrollButtons(False)
@@ -1008,13 +987,9 @@ del /F /Q "{backup_exe}" >nul 2>&1
         # ===== Tabs chính =====
         self.mainTabs = QTabWidget()
         root.addWidget(self.mainTabs, 1)
-        self.btnSkuTask=QPushButton('🧺 Tìm SKU')
-        self.btnSkuTask.setToolTip('Tra đơn Picked và Picking Task từ SKU/UPC, dùng phiên Chrome WMS hiện tại.')
-        right_header.addWidget(self.btnSkuTask)
         self.mainTabs.tabBar().hide()
         self.topTabs.currentChanged.connect(self._on_top_tab_changed)
         self.mainTabs.currentChanged.connect(self.topTabs.setCurrentIndex)
-        self.btnSkuTask.clicked.connect(self.open_sku_finder)
         navigation=QHBoxLayout()
         navigation.setContentsMargins(0,0,0,0)
         navigation.setSpacing(0)
@@ -1196,7 +1171,9 @@ del /F /Q "{backup_exe}" >nul 2>&1
         excel_root.addLayout(body, 1)
 
         self.mainTabs.addTab(self.excelTab, "📊 Excel / Outbound")
-        self.mainTabs.addTab(QWidget(), '📈 Check Prod')  # loaded on first click
+        # The SKU picker is now a real tab, not an extra window.
+        self.sku_tab=SkuTaskDialog(self.cotTab.bridge,self.mainTabs,embedded=True)
+        self.mainTabs.addTab(self.sku_tab, '🔍 Tìm SKU')
 
         self.connection_menu=QMenu(self)
         self.connection_menu.addAction('Mở Chrome riêng / Đăng nhập WMS',lambda:self.choose_wms_connection('chrome'))
@@ -1230,7 +1207,7 @@ del /F /Q "{backup_exe}" >nul 2>&1
         shortcut_select_all.activated.connect(self.table.selectAll)
 
     def choose_wms_connection(self,mode):
-        if self.cotTab.busy or (self.sku_dialog and self.sku_dialog.searcher.busy):
+        if self.cotTab.busy or (self.sku_tab and self.sku_tab.searcher.busy):
             QMessageBox.information(self,'Đang tải','Hãy đợi tải COT hoàn tất hoặc dừng tìm SKU trước khi đổi kết nối.');return
         if mode=='chrome':self.cotTab.bridge.connect_chrome()
         else:
@@ -1770,7 +1747,7 @@ del /F /Q "{backup_exe}" >nul 2>&1
 
     def closeEvent(self, event):
         self._closing=True
-        if self.sku_dialog is not None:self.sku_dialog.searcher.cancel()
+        if self.sku_tab is not None:self.sku_tab.searcher.cancel()
         self.update_timer.stop()
         self._pending_load = None
         if (self.cotTab.parser and self.cotTab.parser.isRunning()) or not self.cotTab.bridge.stop():
