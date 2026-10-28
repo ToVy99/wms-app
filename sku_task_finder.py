@@ -7,7 +7,7 @@ import json
 import math
 import time
 import uuid
-from PySide6.QtCore import QObject, Signal, QTimer
+from PySide6.QtCore import QObject, Signal, QTimer, Qt
 from PySide6.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QLabel,
     QLineEdit, QPushButton, QTableWidgetItem, QApplication, QHeaderView)
 from cot_widgets import CopyTable, LoadingSpinner
@@ -69,8 +69,10 @@ class TaskSearch(QObject):
         except Exception as exc:self.failed.emit(str(exc))
 
 class SkuTaskDialog(QDialog):
-    def __init__(self,bridge,parent=None):
-        super().__init__(parent);self.setWindowTitle('Tìm Task theo SKU / UPC')
+    def __init__(self,bridge,parent=None,embedded=False):
+        super().__init__(parent)
+        if embedded:self.setWindowFlags(Qt.Widget)
+        self.setWindowTitle('Tìm Task theo SKU / UPC')
         self.searcher=TaskSearch(bridge,self);self.baskets=[];self.result=None
         layout=QVBoxLayout(self)
         title=QLabel('SKU / UPC → Đơn Picked → Picking Task');title.setStyleSheet('font-size:16px; font-weight:700; color:#89b4fa;');layout.addWidget(title)
@@ -93,7 +95,7 @@ class SkuTaskDialog(QDialog):
         self.searcher.progress.connect(self.status.setText)
         self.searcher.failed.connect(lambda msg:self.status.setText('Lỗi: '+msg+' · Kết quả trước được giữ.'))
         self.searcher.completed.connect(self.render);self.searcher.busyChanged.connect(self.set_busy)
-        fit_window(self,980,620)
+        if not embedded:fit_window(self,980,620)
     def start(self):
         if self.searcher.busy:return
         self.searcher.start(self.input.text())
