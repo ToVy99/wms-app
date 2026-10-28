@@ -67,17 +67,16 @@ def main():
                         assert 'IntraCity_Chrome_Extension/manifest.json' in archive.namelist()
                 available=window.screen().availableGeometry()
                 assert available.contains(window.frameGeometry())
+                assert window.topTabs.tabText(2).endswith('Tìm SKU')
+                assert not hasattr(window,'check_prod_tab')
                 window.open_sku_finder()
-                assert window.sku_dialog.searcher.bridge is window.cotTab.bridge
-                assert not window.sku_dialog.searcher.busy
-                assert window.sku_dialog.searcher.counter==0
-                window.sku_dialog.grab().save('smoke-sku.png')
-                window.sku_dialog.close()
-                assert window.cotTab.bridge.worker is None
-                window.open_check_prod()
-                assert window.check_prod_tab is not None
-                assert window.check_prod_tab.bridge is window.cotTab.bridge
+                assert window.sku_tab.searcher.bridge is window.cotTab.bridge
+                assert not window.sku_tab.searcher.busy
+                assert window.sku_tab.searcher.counter==0
                 assert window.mainTabs.currentIndex()==2
+                assert window.topTabs.currentIndex()==2
+                window.sku_tab.grab().save('smoke-sku.png')
+                window.mainTabs.setCurrentIndex(0)
                 assert window.cotTab.bridge.worker is None
                 assert not hasattr(intra,'COTOrderListThread')
                 assert not hasattr(intra,'_wms_post')
@@ -119,7 +118,7 @@ def main():
                 window.set_banner_status(False,custom_msg='Chrome transport + native COT verified')
                 finish({'passed':True,'tabs':3,'logic_version':'1.4','native_ui':True,'startup_wms_requests':0,
                         'legacy_api_removed':True,'chrome_same_origin_fetch':'passed',
-                        'chrome_session_cookie':'passed','real_wms_requests':0})
+                        'chrome_session_cookie':'passed','sku_embedded_tab':'passed','real_wms_requests':0})
             except Exception as exc:
                 finish({'passed':False,'error':str(exc)})
 
