@@ -56,7 +56,7 @@ class FinderTests(unittest.TestCase):
                 fit_window(w,available=rect);self.app.processEvents();self.assertTrue(rect.contains(w.frameGeometry()),(rect,w.frameGeometry()))
                 w.mainTabs.setCurrentIndex(1);self.app.processEvents();self.assertLessEqual(w.width(),rect.width())
             with patch.object(w.cotTab.bridge,'request') as request:
-                w.btnSkuTask.click();self.app.processEvents();self.assertTrue(w.sku_dialog.isVisible());self.assertFalse(w.sku_dialog.searcher.busy)
+                w.topTabs.setCurrentIndex(2);self.app.processEvents();self.assertTrue(w.sku_tab.isVisible());self.assertFalse(w.sku_dialog.searcher.busy)
                 for mode in ['light','dark']:w.theme_controller.choose(mode)
                 request.assert_not_called();self.assertIs(w.sku_dialog.searcher.bridge,w.cotTab.bridge)
             w.sku_dialog.close();w.showMaximized();self.app.processEvents();self.assertTrue(w.isMaximized())
