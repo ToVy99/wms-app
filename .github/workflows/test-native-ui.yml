@@ -2,7 +2,7 @@ name: IntraCity 3.4 Native UI Tests (No Build)
 on:
   push:
     branches:
-      - 'codex/intracity-34-native-ui-tests'
+      - 'codex/intracity-34-sku-persistent-login'
   workflow_dispatch:
 permissions:
   contents: read
@@ -21,6 +21,6 @@ jobs:
       - name: Install test dependencies
         shell: pwsh
         run: python -m pip install -r requirements-build.txt
-      - name: Run native Prod calculation and UI checks
+      - name: Verify three-tab UI and persistent Chrome profile
         shell: pwsh
-        run: python -m unittest -v test_prod_snapshots test_prod_time_range test_native_prod_parity test_checkprod_34_static test_native_ui_static test_prod_native_layout test_area_buttons_release34 test_native_cot test_theme test_release33 test_sku_finder test_bridge34
+        run: python -m unittest -v test_native_ui_static test_area_buttons_release34 test_native_cot test_theme test_release33 test_sku_finder test_bridge34 test_chrome_persistent

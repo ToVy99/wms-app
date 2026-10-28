@@ -1,0 +1,69 @@
+name: Build IntraCity 3.4 SKU and Saved WMS Login
+on:
+  push:
+    branches:
+      - codex/intracity-34-sku-persistent-login
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  build:
+    runs-on: windows-latest
+    timeout-minutes: 50
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          architecture: 'x64'
+      - name: Build EXE, test business logic, and verify GUI startup
+        shell: pwsh
+        run: ./build_windows.ps1
+      - name: Create full source ZIP and verify both packages
+        shell: pwsh
+        run: |
+          git archive --format=zip --output=dist/IntraCity_3.4_Source.zip HEAD
+          if ($LASTEXITCODE -ne 0) { throw 'Cannot create source ZIP' }
+          @'
+          import zipfile, pathlib
+          src=pathlib.Path('dist/IntraCity_3.4_Source.zip')
+          required={'launcher.py','intra_2_3_COT_Dashboard_loginfix.py','chrome_cot.py',
+                    'sku_task_finder.py','sku_search_engine.py','extension_bridge.py',
+                    'native_link.py','build_windows.ps1','requirements-build.txt',
+                    'app.ico','wms_bridge_manifest.json','wms_bridge_content.js',
+                    'wms_bridge_background.js','wms_bridge_popup.html','wms_bridge_popup.js',
+                    'wms_bridge_icon.png'}
+          with zipfile.ZipFile(src) as z:
+              assert z.testzip() is None, 'Corrupt ZIP'
+              missing=required-set(z.namelist())
+              assert not missing, 'Missing files: '+repr(missing)
+              assert 'productivity_tab.py' not in z.namelist()
+          exe=pathlib.Path('dist/IntraCity 3.4.exe')
+          assert exe.is_file() and exe.stat().st_size > 1_000_000, 'Missing Windows EXE'
+          print('Verified source ZIP',src.stat().st_size,'bytes and EXE',exe.stat().st_size,'bytes')
+          '@ | python -
+          if ($LASTEXITCODE -ne 0) { throw 'Package verification failed' }
+      - name: Upload Windows EXE
+        uses: actions/upload-artifact@v4
+        with:
+          name: IntraCity_3.4_SKU_Windows_EXE
+          path: dist/IntraCity 3.4.exe
+          if-no-files-found: error
+          retention-days: 14
+      - name: Upload full source archive
+        uses: actions/upload-artifact@v4
+        with:
+          name: IntraCity_3.4_SKU_Full_Source
+          path: dist/IntraCity_3.4_Source.zip
+          if-no-files-found: error
+          retention-days: 14
+      - name: Upload launch verification results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: IntraCity_3.4_SKU_Verification
+          path: |
+            smoke-test-result.json
+            smoke-gui.png
+            smoke-sku.png
+          if-no-files-found: ignore
