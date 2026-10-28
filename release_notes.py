@@ -3,29 +3,22 @@ from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QDialog, QVBoxLayout, QTextBrowser, QPushButton, QMessageBox
 
 VERSION='3.4'
-RELEASE_ID='3.4-checkprod-native-area-ui-notes-20261021'
+RELEASE_ID='3.4-sku-tab-persistent-wms-20261029'
 TITLE='IntraCity 3.4'
 NOTES='''<h2>Có gì mới trong IntraCity 3.4?</h2>
 <ul>
-<li><b>Check Prod:</b> Một tab chức năng cạnh Excel / Outbound, mở bảng năng suất Sort, Check, Check Station, Check&amp;Pack, Pack.</li>
-<li><b>Một phiên Chrome/WMS:</b> Check Prod dùng cầu nối (tiện ích) Chrome đã đăng nhập của, không yêu cầu đăng nhập riêng. Bổ sung kết nối lại sau khi tab WMS tải lại nếu phiên còn hợp lệ.</li>
-<li><b>Lọc Area bằng nút:</b> Nhấn khu A để chỉ xem đơn thuộc khu A của trạng thái đang chọn, kể cả Picked. Đổi trạng thái giữ lựa chọn khu.</li>
-<li>Hoạt ảnh tải nằm gọn bên phải nút ⋯, cùng hàng với Lưu Excel gốc.</li>
-<li>Nới rộng Wave Type, thu gọn ô tìm đơn; rê chuột để xem đầy đủ nội dung.</li>
-<li>Đồng bộ trạng thái kết nối; ngắt khi đóng tab WMS, thử tự khôi phục sau khi tab tải lại nếu phiên còn hợp lệ. Thêm nút Ngắt kết nối trong app.</li>
-<li>Thêm nút Lưu tiện ích (.zip) ngay trong cửa sổ kết nối.</li>
-<li><b>Giao diện gọn hơn:</b> Chuyển COT / Excel–Outbound lên giữa thanh trên cùng, tăng diện tích bảng đơn.</li>
-<li><b>Thu gọn thao tác:</b> Gom các nút chọn đơn, bỏ chọn, Copy OBVN và Picking ID / BSK vào menu Thao tác. Đưa “Lưu Excel gốc” gần nút tải dữ liệu.</li>
-<li><b>Giữ thống kê khu vực:</b> Bỏ ô lọc Area, vẫn giữ cột Area và số lượng đơn từng khu để dễ so sánh.</li>
-<li><b>Trạng thái dễ nhìn hơn:</b> Ẩn các ô Pick Fail, Pre Sorting và Pre Sorted. Các đơn này vẫn được tính trong tổng.</li>
-<li><b>Picked có mã rổ — tự loại trùng:</b> Chỉ lấy mã rổ của đơn đang Picked, mỗi mã rổ hiển thị một lần.</li>
-<li><b>Hai cách kết nối WMS:</b> Bấm “Đăng nhập WMS” để chọn mở Chrome riêng như trước hoặc dùng Chrome đang mở qua tiện ích kết nối. Mỗi lần tải chỉ sử dụng kết nối đang chọn.</li>
+<li><b>Tìm SKU thành tab chính:</b> COT / Excel–Outbound / Tìm SKU cùng một thanh chức năng, không mở cửa sổ riêng.</li>
+<li><b>Gọn ứng dụng:</b> Gỡ phần năng suất không còn sử dụng và thành phần phụ thuộc.</li>
+<li><b>Ghi nhớ WMS:</b> Chrome Profile riêng trên máy giữ phiên đăng nhập nếu Shopee còn cho phép. Hết hạn vẫn cần đăng nhập lại.</li>
+<li><b>Một phiên Chrome/WMS:</b> COT và Tìm SKU cùng dùng một tab đã đăng nhập, không lưu mật khẩu trong file cấu hình.</li>
+<li><b>Lọc Area bằng nút:</b> Chọn khu của trạng thái hiện tại, kể cả Picked.</li>
+<li><b>Tra SKU:</b> Kết hợp tool tìm mã rổ, cho phép dừng tìm và giữ kết quả gần nhất.</li>
+<li><b>Hai cách kết nối WMS:</b> Chrome riêng ghi nhớ phiên hoặc Chrome đang mở qua tiện ích.</li>
 <li><b>Thống kê nhỏ gọn:</b> Giảm chiều cao các ô.</li>
-<li><b>Tìm Task theo SKU nhanh hơn:</b> Kết hợp tool tìm mã rổ (WMS SKU Task Finder) với app.</li>
-<li><b>Dừng tìm khi cần:</b> Nút Dừng hủy các yêu cầu tìm SKU đang chạy, không tiếp tục gửi lượt mới.</li>
+<li><b>Excel / Outbound:</b> Giữ nguyên logic COT, lọc, thống kê và xuất dữ liệu.</li>
 </ul>
-<p><b>Giữ nguyên logic. Các thay đổi giao diện không làm thay đổi dữ liệu gốc.</b></p>
-<p><i>Thông báo hiện lần đầu khi mở phiên bản mới. Bấm “Đã hiểu” để đóng; mở lại bằng “Xem thay đổi”.</i></p>
+<p><b>Chrome quản lý phiên trong hồ sơ người dùng trên máy, không ghi thông tin xác thực vào mã nguồn.</b></p>
+<p><i>Thông báo hiện lần đầu. Bấm “Đã hiểu” để đóng, hoặc chọn “Xem thay đổi”.</i></p>
 <p><b>Đỗ Rê Mon♥!</b></p>'''
 
 def show_changes(window,save_config,automatic=False):

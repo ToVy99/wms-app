@@ -1,3 +1,11 @@
+INTRACITY 3.4 — COT / EXCEL-OUTBOUND / TÌM SKU
+- Đã gỡ chức năng Check Prod/năng suất.
+- Tìm SKU giờ nằm ở tab thứ ba cạnh COT và Excel / Outbound, không mở một cửa sổ khác.
+- Đăng nhập WMS > Mở Chrome riêng: Chrome dùng hồ sơ lưu ở %LOCALAPPDATA%\IntraCity\ChromeProfile.
+- Khi đăng nhập lần đầu và chọn đúng kho, lần sau Chrome có thể dùng lại phiên còn hiệu lực. Nếu Shopee yêu cầu xác thực lại, phải đăng nhập bình thường.
+- KHÔNG CHIA SẺ ChromeProfile: thư mục có thể chứa cookies đăng nhập. Mật khẩu không được app ghi vào file cấu hình.
+- Nếu chọn Chrome Extension, phiên đăng nhập thuộc Chrome đang mở và cách kết nối tiện ích không thay đổi.
+
 BỔ SUNG 17/10 — INTRACITY 3.4
 - Hoạt ảnh tải nằm cùng hàng, bên phải nút ⋯.
 - Wave Type rộng hơn; rê chuột để xem đủ nội dung.
@@ -152,7 +160,7 @@ CẬP NHẬT 3.3.1:
 
 CẬP NHẬT 3.4:
 - Cửa sổ mở vừa vùng màn hình, có thể phóng to. Màn nhỏ có thanh cuộn dự phòng.
-- Nút Tìm Task theo SKU ở góc phải thanh tab, dùng chung phiên Chrome WMS.
+- Tab Tìm SKU trên thanh chức năng chính, dùng chung phiên Chrome WMS.
 - Nhập/quét SKU/UPC rồi Enter: tìm đơn Picked -> SN -> Picking Task 7 ngày giờ VN.
 - Hiện Task ID, Order Structure, BSK, SKU Qty, Item Qty và số SN khớp.
 - Copy BSK từng task hoặc tất cả không trùng. Chọn ô/cột rồi Ctrl+C.
