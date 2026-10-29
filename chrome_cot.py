@@ -12,6 +12,7 @@ import time
 import unicodedata
 import re
 from pathlib import Path
+from chrome_visibility import set_chrome_visible
 from urllib.parse import urlsplit
 
 from PySide6.QtCore import QObject, QThread, Signal, Slot, QTimer, QDate, Qt
@@ -84,6 +85,22 @@ FETCH_JS = r'''async ({url, method, body, binary}) => {
 }'''
 
 
+# Only a read-only, bounded WMS request verifies whether the saved session is valid.
+AUTH_CHECK_JS = r'''async (url) => {
+  try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 9000);
+    let response;
+    try {
+      response = await fetch(url, {method:'GET',credentials:'include',signal:controller.signal,
+        headers:{'X-CCTV-Tenant-Id':'WMS'}});
+    } finally {clearTimeout(timeout);}
+    if (!response.ok) return false;
+    const data = await response.json();
+    return !!(data && data.retcode === 0);
+  } catch (_) { return false; }
+}'''
+
 # SKU uses the supplied extension's response/auth rules and has no 25s timer.
 SKU_FETCH_JS = r'''async ({url,body}) => {
 const ALLOWED_PREFIX = 'https://wms.ssc.shopee.vn/api/';
@@ -119,12 +136,86 @@ class ChromeWorker(QThread):
     result = Signal(str, str)
     state = Signal(bool, str)
     skuProgress = Signal(str,str)
+    chromeVisibility = Signal(bool)
+    chromeCountdown = Signal(int)
+    workflowReady = Signal()
 
-    def __init__(self):
+    def __init__(self, auto_hide=True, hide_delay=10):
         super().__init__()
+        self.auto_hide=bool(auto_hide)
+        self.hide_delay=max(0,min(300,int(hide_delay)))
+        self._visible=True
+        self._hold_visible=False
+        self._auth_valid=False
+        self._authenticated_at=None
+        self._hide_at=None
+        self._last_countdown=None
+        self._last_probe=0.0
+        self._hide_retry_after=0.0
+        self._work_ready=False
+        self._ready_at=None
+        self._profile=None
         self.commands = queue.Queue()
         self.network_requests = 0
         self._sku_events={};self._sku_lock=threading.Lock()
+
+    def set_browser_visible(self, visible):
+        self.commands.put((None,{'type':'_CHROME_VISIBLE','visible':bool(visible)}))
+
+    def set_auto_hide(self, enabled, seconds):
+        self.commands.put((None,{'type':'_AUTO_HIDE','enabled':bool(enabled),
+                                'seconds':max(0,min(300,int(seconds)))}))
+
+    def _visibility(self, visible):
+        if self._profile is None:
+            return False
+        try:
+            if not set_chrome_visible(self._profile,visible):
+                return False
+        except (OSError,ValueError,RuntimeError,TypeError):
+            return False
+        self._visible=visible
+        self.chromeVisibility.emit(visible)
+        return True
+
+    def _auth_tick(self, context, now):
+        if self._auth_valid:
+            if not self._work_ready and not self._hold_visible and self._ready_at is not None and now>=self._ready_at:
+                self._work_ready=True
+                self.workflowReady.emit()
+            if self._hide_at is not None and self.auto_hide and not self._hold_visible:
+                remaining=max(0,int(self._hide_at-now+0.999))
+                if remaining!=self._last_countdown:
+                    self._last_countdown=remaining
+                    self.chromeCountdown.emit(remaining)
+                if now>=self._hide_at and now>=self._hide_retry_after:
+                    if self._visibility(False):
+                        self._hide_at=None
+                    else:
+                        self._hide_retry_after=now+1
+            return
+        if now-self._last_probe<5:
+            return
+        self._last_probe=now
+        try:
+            page=self.find_page(context)
+            if any(token in page.url.lower() for token in ('/login','/signin','/sso/','/auth/')):
+                return
+            if not page.evaluate(AUTH_CHECK_JS,URL_EXPORT_LIST):
+                self._needs_login=True
+                return
+        except Exception:
+            self._needs_login=True
+            return
+        self._auth_valid=True
+        self._authenticated_at=now
+        self.state.emit(True,'Phiên WMS đã xác thực · Vui lòng chọn đúng kho trước khi tiếp tục.')
+        self._ready_at=now+(self.hide_delay if self._needs_login else 0)
+        if self.auto_hide and not self._hold_visible:
+            self._hide_at=self._ready_at
+        if not self._needs_login and not self._hold_visible:
+            self._work_ready=True
+            self.workflowReady.emit()
 
     def enqueue(self, request_id, msg):
         if msg.get('type')=='WMS_SKU_SEARCH':
@@ -159,6 +250,8 @@ class ChromeWorker(QThread):
         try:
             with sync_playwright() as pw:
                 profile_dir = chrome_profile_dir()
+                self._profile=profile_dir
+                self._needs_login=not (profile_dir/'Local State').is_file()
                 profile_dir.mkdir(parents=True,exist_ok=True)
                 context = pw.chromium.launch_persistent_context(
                     user_data_dir=str(profile_dir),channel='chrome',
@@ -172,7 +265,8 @@ class ChromeWorker(QThread):
                     except Exception:
                         if not context.pages:
                             raise RuntimeError('Chrome đã đóng.')
-                    self.state.emit(True, 'Chrome WMS đang mở · Phiên đăng nhập được lưu trong hồ sơ Chrome riêng trên máy.')
+                    self.chromeVisibility.emit(True)
+                    self.state.emit(False,'Chrome đã mở · Đang xác nhận đăng nhập WMS và kho…')
                     while not self.isInterruptionRequested():
                         try:
                             request_id, msg = self.commands.get_nowait()
@@ -180,10 +274,34 @@ class ChromeWorker(QThread):
                             try:
                                 pages = [p for p in context.pages if not p.is_closed()]
                                 if not pages:break
-                                pages[-1].wait_for_timeout(100)
+                                pages[-1].wait_for_timeout(150)
+                                self._auth_tick(context,time.monotonic())
                             except Exception:
-                                # The persistent context owns Chrome; closing it ends this worker.
                                 break
+                            continue
+                        if msg.get('type')=='_CHROME_VISIBLE':
+                            visible=msg['visible']
+                            if not visible and not self._auth_valid:
+                                self.state.emit(False,'Hãy đăng nhập WMS và chọn kho trước khi ẩn Chrome.')
+                                continue
+                            if visible:
+                                self._hold_visible=True
+                                self._hide_at=None
+                            else:
+                                self._hold_visible=False
+                                self._hide_at=None
+                            if self._visibility(visible) and not visible and self._auth_valid and not self._work_ready:
+                                self._work_ready=True
+                                self.workflowReady.emit()
+                            continue
+                        if msg.get('type')=='_AUTO_HIDE':
+                            self.auto_hide=msg['enabled']
+                            self.hide_delay=msg['seconds']
+                            if self._auth_valid and not self._work_ready and self._needs_login:
+                                self._ready_at=time.monotonic()+self.hide_delay
+                            if not self.auto_hide:self._hide_at=None
+                            elif self._auth_valid and not self._hold_visible and self._visible:
+                                self._hide_at=time.monotonic()+self.hide_delay
                             continue
                         try:
                             validate_request(msg)
@@ -208,6 +326,15 @@ class ChromeWorker(QThread):
                                 })
                         except Exception as exc:
                             response = {'success':False,'error':str(exc)}
+                        if response.get('auth'):
+                            self._auth_valid=False
+                            self._work_ready=False
+                            self._ready_at=None
+                            self._needs_login=True
+                            self._hold_visible=False
+                            self._hide_at=None
+                            self._visibility(True)
+                            self.state.emit(False,'Phiên WMS hết hạn · Hãy đăng nhập lại trong Chrome.')
                         with self._sku_lock:self._sku_events.pop(request_id,None)
                         self.result.emit(request_id, json.dumps(response, ensure_ascii=False))
                 finally:
@@ -230,6 +357,8 @@ class NativeBridge(QObject):
     completed = Signal(str, str)
     sessionChanged = Signal(bool, str)
     skuProgress = Signal(str,str)
+    chromeVisibilityChanged = Signal(bool)
+    chromeCountdownChanged = Signal(int)
 
     def __init__(self, config, save_config, parent=None):
         super().__init__(parent)
@@ -239,9 +368,55 @@ class NativeBridge(QObject):
         self.connected = False
         self.session_message='Chưa kết nối WMS.'
         self.mode='chrome'; self.workers={}; self.states={}; self.inflight=set()
+        self.auto_hide=bool(config.get('chrome_auto_hide',True))
+        value=config.get('chrome_auto_hide_seconds',10)
+        self.hide_delay=value if type(value) is int and 0<=value<=300 else 10
+        self._on_connected={}
+        self._reconnect_budget=0
 
     def connect_chrome(self):
-        self._connect_mode('chrome',ChromeWorker)
+        self._connect_mode('chrome',lambda:ChromeWorker(self.auto_hide,self.hide_delay))
+
+    def ensure_chrome_connection(self,key,callback):
+        if self.connected:
+            QTimer.singleShot(0,callback)
+            return True
+        if self.mode!='chrome':return False
+        self._on_connected[key]=callback
+        self._reconnect_budget=1
+        worker=self.workers.get('chrome')
+        if worker is None or not worker.isRunning():
+            self.connect_chrome()
+        return True
+
+    def cancel_deferred(self,key):
+        self._on_connected.pop(key,None)
+
+    def set_auto_hide(self,enabled,seconds=None):
+        self.auto_hide=bool(enabled)
+        if seconds is not None:self.hide_delay=max(0,min(300,int(seconds)))
+        self.config['chrome_auto_hide']=self.auto_hide
+        self.config['chrome_auto_hide_seconds']=self.hide_delay
+        self.save_config(self.config)
+        worker=self.workers.get('chrome')
+        if worker is not None and worker.isRunning() and hasattr(worker,'set_auto_hide'):
+            worker.set_auto_hide(self.auto_hide,self.hide_delay)
+
+    def show_chrome(self):
+        if self.mode!='chrome':return False
+        worker=self.workers.get('chrome')
+        if worker is None or not worker.isRunning():
+            self.connect_chrome()
+            return True
+        worker.set_browser_visible(True)
+        return True
+
+    def hide_chrome(self):
+        if self.mode!='chrome':return False
+        worker=self.workers.get('chrome')
+        if worker is None or not worker.isRunning():return False
+        worker.set_browser_visible(False)
+        return True
 
     def connect_extension(self):
         from extension_bridge import ExtensionWorker
@@ -263,6 +438,15 @@ class NativeBridge(QObject):
             worker.result.connect(self._completed)
             worker.skuProgress.connect(self.skuProgress)
             worker.state.connect(lambda connected,message,m=mode,w=worker:self._worker_state(m,w,connected,message))
+            if mode=='chrome':
+                if hasattr(worker,'chromeVisibility'):
+                    worker.chromeVisibility.connect(self.chromeVisibilityChanged)
+                if hasattr(worker,'chromeCountdown'):
+                    worker.chromeCountdown.connect(self.chromeCountdownChanged)
+                if hasattr(worker,'workflowReady'):
+                    worker.workflowReady.connect(lambda w=worker:self._worker_ready(w))
+                if hasattr(worker,'finished'):
+                    worker.finished.connect(lambda m=mode,w=worker:self._worker_finished(m,w))
             worker.start()
         self.mode=mode;self.worker=worker
         self._state(*self.states[mode])
@@ -271,6 +455,26 @@ class NativeBridge(QObject):
         if self.workers.get(mode) is not worker:return
         self.states[mode]=(connected,message)
         if self.mode==mode:self._state(connected,message)
+        if connected and mode=='chrome' and self.mode==mode:
+            self._reconnect_budget=0
+            if not hasattr(worker,'workflowReady'):
+                self._worker_ready(worker)
+
+    def _worker_ready(self,worker):
+        if self.workers.get('chrome') is not worker or self.mode!='chrome' or not self.connected:
+            return
+        callbacks=self._on_connected.copy()
+        self._on_connected.clear()
+        for callback in callbacks.values():QTimer.singleShot(0,callback)
+
+    def _worker_finished(self,mode,worker):
+        if self.workers.get(mode) is not worker or mode!='chrome':return
+        if self._on_connected and self._reconnect_budget>0 and not self.connected:
+            self._reconnect_budget-=1
+            QTimer.singleShot(0,self.connect_chrome)
+        elif self._on_connected and not self.connected:
+            self._on_connected.clear()
+            self.sessionChanged.emit(False,'Không kết nối được Chrome. Bấm Tải dữ liệu để thử lại.')
 
     def _completed(self,rid,raw):
         self.inflight.discard(rid);self.completed.emit(rid,raw)
@@ -593,7 +797,11 @@ class ChromeCotTab(QWidget):
     def fetch_dataset(self):
         if self.busy: return
         if not self.bridge.connected:
-            self.message.setText('Bấm Đăng nhập WMS, đăng nhập và chọn kho trong Chrome trước.'); return
+            if self.bridge.ensure_chrome_connection('cot-download',self.fetch_dataset):
+                self.message.setText('Đang mở lại Chrome và xác thực phiên WMS đã lưu… Nếu cần, hãy đăng nhập và chọn kho.')
+            else:
+                self.message.setText('Tiện ích Chrome chưa kết nối · Hãy kết nối tab WMS trong tiện ích.')
+            return
         self.scope=copy.deepcopy(self.current_range()); self.poll_count=0
         self.loading_dataset=True; self.refresh_failed=False
         self.set_busy(True); self.set_stage('Đang yêu cầu báo cáo…')
