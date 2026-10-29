@@ -17,38 +17,47 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
-      - name: Extract source
+      - name: Extract v1.1 source
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force -Path scan_build | Out-Null
           Expand-Archive -Path tools/wms_scan_login/source.zip -DestinationPath scan_build -Force
+      - name: Apply WMS Login v1.2 fixes
+        run: |
+          python tools/wms_scan_login/v1_2_fix.py
       - name: Install Python dependencies
         working-directory: scan_build
         run: |
           python -m pip install --upgrade pip
           python -m pip install -r requirements.txt
-      - name: Validate source and settings
+      - name: Validate Python and URL behavior
         working-directory: scan_build
         run: |
           python -m compileall -q .
           python -m unittest discover -s tests -v
-      - name: Build portable Windows EXE
+      - name: Build portable Windows EXE with complete Selenium
         working-directory: scan_build
-        run: |
-          python -m PyInstaller --noconfirm --clean --onefile --windowed --name WMS_Scan_Login --collect-data selenium --collect-binaries selenium main.py
-      - name: Check binary
         shell: pwsh
         run: |
-          $exe = "scan_build/dist/WMS_Scan_Login.exe"
-          if (-not (Test-Path $exe)) { throw "EXE file missing" }
+          python -m PyInstaller --noconfirm --clean --onefile --windowed --name WMS_Scan_Login --collect-all selenium --collect-all trio --collect-all trio_websocket --collect-all websocket --collect-all urllib3 --collect-all certifi --collect-all sniffio --collect-all attrs main.py
+          if ($LASTEXITCODE -ne 0) { throw "PyInstaller failed" }
+      - name: Smoke test the frozen EXE and headless Chrome
+        shell: pwsh
+        run: |
+          $exe = (Resolve-Path "scan_build/dist/WMS_Scan_Login.exe").Path
           if ((Get-Item $exe).Length -lt 2000000) { throw "EXE unexpectedly small" }
           $header = [System.IO.File]::ReadAllBytes($exe)
-          if ($header[0] -ne 77 -or $header[1] -ne 90) { throw "Invalid PE header" }
-          Write-Host "EXE OK: $((Get-Item $exe).Length) bytes"
-      - name: Upload Windows ZIP
+          if ($header[0] -ne 77 -or $header[1] -ne 90) { throw "Invalid Windows PE header" }
+          & $exe --self-test
+          if (Test-Path wms_scan_smoke_result.txt) { Get-Content wms_scan_smoke_result.txt }
+          if ($LASTEXITCODE -ne 0) { throw "Frozen app/Chrome smoke test failed" }
+          if (-not ((Get-Content wms_scan_smoke_result.txt -Raw) -match "PASS")) { throw "Smoke test result missing" }
+      - name: Upload EXE and diagnostics
         uses: actions/upload-artifact@v4
         with:
-          name: WMS_Scan_Login_Windows_EXE
-          path: scan_build/dist/WMS_Scan_Login.exe
+          name: WMS_Scan_Login_Windows_EXE_v1_2
+          path: |
+            scan_build/dist/WMS_Scan_Login.exe
+            wms_scan_smoke_result.txt
           if-no-files-found: error
           retention-days: 7
