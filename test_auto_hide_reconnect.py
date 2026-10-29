@@ -23,6 +23,7 @@ class FakeWorker(QObject):
     def isRunning(self):return self.running
     def start(self):self.running=True
     def enqueue(self,rid,msg):self.calls.append((rid,msg))
+    def cancel_sku(self,rid):pass
 class FakePage:
     url='https://wms.ssc.shopee.vn/home'
     def __init__(self,valid=True):self.valid=valid;self.calls=[]
