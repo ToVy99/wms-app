@@ -95,6 +95,8 @@ def _self_test():
             driver = webdriver.Chrome(options=options)
             driver.get("data:text/html,<html><head><title>WMS smoke test</title></head><body>OK</body></html>")
             assert driver.title == "WMS smoke test"
+            driver.quit()
+            driver = None
         result.write_text("PASS: Frozen Selenium imported and Chrome launched.\\\\n", encoding="utf-8")
         return 0
     except Exception as exc:
