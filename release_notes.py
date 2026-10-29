@@ -3,12 +3,13 @@ from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QDialog, QVBoxLayout, QTextBrowser, QPushButton, QMessageBox
 
 VERSION='3.4'
-RELEASE_ID='3.4-sku-tab-persistent-wms-20261029'
+RELEASE_ID='3.4-chrome-auto-hide-10s-20261029'
 TITLE='IntraCity 3.4'
 NOTES='''<h2>Có gì mới trong IntraCity 3.4?</h2>
 <ul>
 <li><b>Tìm SKU thành tab chính:</b> COT / Excel–Outbound / Tìm SKU cùng một thanh chức năng, không mở cửa sổ riêng.</li>
 <li><b>Gọn ứng dụng:</b> Gỡ phần năng suất không còn sử dụng và thành phần phụ thuộc.</li>
+<li><b>Ẩn Chrome sau 10 giây:</b> Có nút Ẩn/Hiện, chờ chọn kho sau khi đăng nhập lần đầu; tự kết nối lại khi bấm Tải dữ liệu hoặc Tìm SKU.</li>
 <li><b>Ghi nhớ WMS:</b> Chrome Profile riêng trên máy giữ phiên đăng nhập nếu Shopee còn cho phép. Hết hạn vẫn cần đăng nhập lại.</li>
 <li><b>Một phiên Chrome/WMS:</b> COT và Tìm SKU cùng dùng một tab đã đăng nhập, không lưu mật khẩu trong file cấu hình.</li>
 <li><b>Lọc Area bằng nút:</b> Chọn khu của trạng thái hiện tại, kể cả Picked.</li>

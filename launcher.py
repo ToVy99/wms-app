@@ -67,6 +67,10 @@ def main():
                         assert 'IntraCity_Chrome_Extension/manifest.json' in archive.namelist()
                 available=window.screen().availableGeometry()
                 assert available.contains(window.frameGeometry())
+                assert window.cotTab.bridge.auto_hide
+                assert window.cotTab.bridge.hide_delay==10
+                assert window.btnChromeVisibility.text().endswith('Ẩn Chrome')
+                assert window.actionAutoHide.isChecked()
                 assert window.topTabs.tabText(2).endswith('Tìm SKU')
                 assert not hasattr(window,'check_prod_tab')
                 window.open_sku_finder()

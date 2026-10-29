@@ -1,0 +1,65 @@
+name: Build IntraCity 3.4 AutoHide 10s Windows EXE and Source
+on:
+  push:
+    branches:
+      - codex/intracity-34-autohide-10s-exe
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  build:
+    runs-on: windows-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          architecture: 'x64'
+      - name: Run full regression suite and build Windows portable EXE
+        shell: pwsh
+        run: ./build_windows.ps1
+      - name: Package and inspect complete source archive
+        shell: pwsh
+        run: |
+          git archive --format=zip --output=dist/IntraCity_3.4_AutoHide_Source.zip HEAD
+          if ($LASTEXITCODE -ne 0) { throw 'Git archive failed' }
+          @'
+          import zipfile, pathlib
+          path=pathlib.Path('dist/IntraCity_3.4_AutoHide_Source.zip')
+          required={'launcher.py','intra_2_3_COT_Dashboard_loginfix.py','chrome_cot.py',
+                    'chrome_visibility.py','sku_task_finder.py','sku_search_engine.py',
+                    'extension_bridge.py','native_link.py','build_windows.ps1',
+                    'requirements-build.txt','app.ico','wms_bridge_manifest.json',
+                    'wms_bridge_background.js','wms_bridge_content.js','wms_bridge_popup.html',
+                    'wms_bridge_popup.js','wms_bridge_icon.png','test_auto_hide_reconnect.py'}
+          with zipfile.ZipFile(path) as archive:
+              assert archive.testzip() is None
+              assert required <= set(archive.namelist()),required-set(archive.namelist())
+              assert 'productivity_tab.py' not in archive.namelist()
+          exe=pathlib.Path('dist/IntraCity 3.4.exe')
+          assert exe.is_file() and exe.stat().st_size>1_000_000
+          print('SOURCE_ZIP',path.stat().st_size,'EXE',exe.stat().st_size)
+          '@ | python -
+          if ($LASTEXITCODE -ne 0) { throw 'Package verification failed' }
+      - uses: actions/upload-artifact@v4
+        with:
+          name: IntraCity_3.4_AutoHide10s_Windows_EXE
+          path: dist/IntraCity 3.4.exe
+          retention-days: 14
+          if-no-files-found: error
+      - uses: actions/upload-artifact@v4
+        with:
+          name: IntraCity_3.4_AutoHide10s_Full_Source
+          path: dist/IntraCity_3.4_AutoHide_Source.zip
+          retention-days: 14
+          if-no-files-found: error
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: IntraCity_3.4_AutoHide10s_Verification
+          path: |
+            smoke-test-result.json
+            smoke-gui.png
+            smoke-sku.png
+          if-no-files-found: ignore

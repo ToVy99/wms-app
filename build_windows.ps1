@@ -9,7 +9,7 @@ $python = Join-Path $PSScriptRoot '.venv-build\Scripts\python.exe'
 if ($LASTEXITCODE -ne 0) { throw 'Khong cap nhat duoc pip.' }
 & $python -m pip install -r requirements-build.txt
 if ($LASTEXITCODE -ne 0) { throw 'Cai dependency that bai.' }
-& $python -m unittest test_native_cot test_theme test_release33 test_sku_finder test_bridge34 test_native_ui_static test_area_buttons_release34 test_chrome_persistent
+& $python -m unittest test_native_cot test_theme test_release33 test_sku_finder test_bridge34 test_native_ui_static test_area_buttons_release34 test_chrome_persistent test_auto_hide_reconnect
 if ($LASTEXITCODE -ne 0) { throw 'COT behavior verification failed.' }
 # Limit DLL discovery to this Python installation and Windows. Unrelated tools
 # on PATH can otherwise inject incompatible ICU/OpenSSL/UCRT DLLs into the EXE.
@@ -18,7 +18,7 @@ $buildPythonBase = (& $python -c "import sys; print(sys.base_prefix)").Trim()
 try {
     $env:PATH = @((Split-Path $python), $buildPythonBase, (Join-Path $buildPythonBase 'Scripts'),
                   (Join-Path $env:SystemRoot 'System32'), $env:SystemRoot) -join ';'
-    & $python -m PyInstaller --noconfirm --clean --onefile --windowed --name "IntraCity 3.4" --icon "app.ico" --add-data "app.ico;." --add-data "wms_bridge_manifest.json;." --add-data "wms_bridge_background.js;." --add-data "wms_bridge_content.js;." --add-data "wms_bridge_popup.html;." --add-data "wms_bridge_popup.js;." --add-data "wms_bridge_icon.png;." --exclude-module PySide6.QtWebEngineWidgets --exclude-module PySide6.QtWebEngineCore --exclude-module PySide6.QtWebChannel --collect-all playwright --hidden-import python_calamine --hidden-import pandas.io.excel._calamine --hidden-import openpyxl --hidden-import xlrd launcher.py
+    & $python -m PyInstaller --noconfirm --clean --onefile --windowed --name "IntraCity 3.4" --icon "app.ico" --add-data "app.ico;." --add-data "wms_bridge_manifest.json;." --add-data "wms_bridge_background.js;." --add-data "wms_bridge_content.js;." --add-data "wms_bridge_popup.html;." --add-data "wms_bridge_popup.js;." --add-data "wms_bridge_icon.png;." --exclude-module PySide6.QtWebEngineWidgets --exclude-module PySide6.QtWebEngineCore --exclude-module PySide6.QtWebChannel --collect-all playwright --hidden-import psutil --hidden-import python_calamine --hidden-import pandas.io.excel._calamine --hidden-import openpyxl --hidden-import xlrd launcher.py
     if ($LASTEXITCODE -ne 0) { throw 'Build EXE that bai.' }
 } finally {
     $env:PATH = $buildPathBefore
