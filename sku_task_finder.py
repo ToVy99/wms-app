@@ -38,19 +38,44 @@ class TaskSearch(QObject):
     def __init__(self,bridge,parent=None):
         super().__init__(parent);self.bridge=bridge;self.busy=False
         self.prefix='sku-'+uuid.uuid4().hex+'-';self.counter=0;self.pending=None;self.cancelled=False
+        self.waiting_chrome=False
         self.bridge.completed.connect(self._reply)
         self.bridge.skuProgress.connect(self._progress)
     def start(self,upc):
         if self.busy:return
         upc=''.join(upc.split())
         if not upc:self.failed.emit('Nhập hoặc quét mã SKU/UPC trước.');return
-        if not self.bridge.connected:self.failed.emit('Bấm Đăng nhập WMS và chọn kho trong Chrome trước.');return
+        if not self.bridge.connected:
+            if hasattr(self.bridge,'ensure_chrome_connection') and self.bridge.ensure_chrome_connection(self,self._resume_after_chrome):
+                self._waiting_upc=upc
+                self.waiting_chrome=True
+                self.busy=True
+                self.busyChanged.emit(True)
+                self.progress.emit('Đang khôi phục Chrome WMS… Đăng nhập/chọn kho nếu được yêu cầu.')
+            else:
+                self.failed.emit('Chưa kết nối WMS. Hãy mở Chrome hoặc kết nối tiện ích.')
+            return
         self.counter+=1;self.pending=self.prefix+str(self.counter)
         self.cancelled=False;self.busy=True;self.busyChanged.emit(True)
         self.progress.emit(upc+' · Đang tìm đơn Picked…')
         self.bridge.request(self.pending,json.dumps({'type':'WMS_SKU_SEARCH','url':URL_ORDER,'upc':upc}))
+    def _resume_after_chrome(self):
+        if not self.waiting_chrome:return
+        upc=self._waiting_upc
+        self.waiting_chrome=False
+        self.busy=False
+        self.busyChanged.emit(False)
+        self.start(upc)
+
     def cancel(self):
         if not self.busy:return
+        if self.waiting_chrome:
+            self.waiting_chrome=False
+            self.busy=False
+            if hasattr(self.bridge,'cancel_deferred'):self.bridge.cancel_deferred(self)
+            self.busyChanged.emit(False)
+            self.progress.emit('Đã hủy chờ Chrome; không gửi yêu cầu Tìm SKU.')
+            return
         self.cancelled=True;self.bridge.cancel_sku(self.pending)
         self.progress.emit('Đang dừng tìm…')
     def _progress(self,rid,message):
