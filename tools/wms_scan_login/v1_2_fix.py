@@ -1,7 +1,7 @@
 """Patch v1.2 for WMS Scan Login. Applied during the Windows build."""
 from pathlib import Path
 
-root = Path(__file__).resolve().parents[3] / "scan_build"
+root = Path(__file__).resolve().parents[2] / "scan_build"
 assert (root / "automation.py").is_file(), root
 assert (root / "main.py").is_file(), root
 
