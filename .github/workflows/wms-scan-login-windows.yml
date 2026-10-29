@@ -25,6 +25,9 @@ jobs:
       - name: Apply WMS Login v1.2 fixes
         run: |
           python tools/wms_scan_login/v1_2_fix.py
+      - name: Apply optional station scan v1.3
+        run: |
+          python tools/wms_scan_login/v1_3_station_fix.py
       - name: Install Python dependencies
         working-directory: scan_build
         run: |
@@ -64,7 +67,7 @@ jobs:
       - name: Upload EXE and diagnostics
         uses: actions/upload-artifact@v4
         with:
-          name: WMS_Scan_Login_Windows_EXE_v1_2
+          name: WMS_Scan_Login_Windows_EXE_v1_3
           path: |
             scan_build/dist/WMS_Scan_Login.exe
             wms_scan_smoke_result.txt
