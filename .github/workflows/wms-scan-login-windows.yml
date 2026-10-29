@@ -32,6 +32,9 @@ jobs:
         shell: pwsh
         run: |
           python -c "import base64,zlib,pathlib,hashlib; p=pathlib.Path('tools/wms_scan_login/gui_v1_4_main.py.zlib.b64'); b=zlib.decompress(base64.b64decode(p.read_text().strip())); assert hashlib.sha256(b).hexdigest() == '595801100905b42f684e456cb5b9392f2242d320e9e5d3163af88fd139d1a355', 'GUI source checksum mismatch'; pathlib.Path('scan_build/main.py').write_bytes(b); print('Modern GUI restored:', len(b), 'bytes')"
+      - name: Keep advanced settings visible on laptops
+        run: |
+          python tools/wms_scan_login/v1_4_ui_polish.py
       - name: Install Python dependencies
         working-directory: scan_build
         run: |
