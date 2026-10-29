@@ -28,6 +28,10 @@ jobs:
       - name: Apply optional station scan v1.3
         run: |
           python tools/wms_scan_login/v1_3_station_fix.py
+      - name: Apply modern v1.4 CHECK / PACK interface
+        shell: pwsh
+        run: |
+          python -c "import base64,zlib,pathlib,hashlib; p=pathlib.Path('tools/wms_scan_login/gui_v1_4_main.py.zlib.b64'); b=zlib.decompress(base64.b64decode(p.read_text().strip())); assert hashlib.sha256(b).hexdigest() == '595801100905b42f684e456cb5b9392f2242d320e9e5d3163af88fd139d1a355', 'GUI source checksum mismatch'; pathlib.Path('scan_build/main.py').write_bytes(b); print('Modern GUI restored:', len(b), 'bytes')"
       - name: Install Python dependencies
         working-directory: scan_build
         run: |
@@ -64,12 +68,21 @@ jobs:
           & $exe --self-test
           if ($LASTEXITCODE -ne 0) { throw "Frozen GUI app smoke test failed" }
           if (-not ((Get-Content wms_scan_smoke_result.txt -Raw) -match "PASS")) { throw "Smoke test result missing" }
+      - name: Smoke test modern GUI
+        shell: pwsh
+        run: |
+          & (Resolve-Path "scan_build/dist/WMS_Scan_Login_Diagnostic.exe").Path --ui-smoke
+          $uiExit = $LASTEXITCODE
+          if (Test-Path wms_ui_smoke_result.txt) { Get-Content wms_ui_smoke_result.txt }
+          if ($uiExit -ne 0) { throw "UI smoke test failed" }
+          if (-not ((Get-Content wms_ui_smoke_result.txt -Raw) -match "PASS")) { throw "GUI test did not pass" }
       - name: Upload EXE and diagnostics
         uses: actions/upload-artifact@v4
         with:
-          name: WMS_Scan_Login_Windows_EXE_v1_3
+          name: WMS_Scan_Login_Windows_EXE_v1_4
           path: |
             scan_build/dist/WMS_Scan_Login.exe
             wms_scan_smoke_result.txt
+            wms_ui_smoke_result.txt
           if-no-files-found: error
           retention-days: 7
