@@ -942,6 +942,16 @@ del /F /Q "{backup_exe}" >nul 2>&1
         self.lblWMSState.setStyleSheet("color: #a6adc8; font-weight: 600;")
 
         left_header.addWidget(self.btnLoginWMS)
+        self._chrome_is_visible=True
+        self.btnChromeVisibility=QPushButton('🙈 Ẩn Chrome')
+        self.btnChromeVisibility.setToolTip('Ẩn Chrome nhưng không tắt kết nối WMS; bấm lại để hiện.')
+        self.btnChromeVisibility.setFixedWidth(112)
+        self.btnChromeVisibility.clicked.connect(self.toggle_chrome_visibility)
+        left_header.addWidget(self.btnChromeVisibility)
+        self.lblChromeCountdown=QLabel('')
+        self.lblChromeCountdown.setFixedWidth(82)
+        self.lblChromeCountdown.setToolTip('Chờ chọn kho sau khi đăng nhập, mặc định 10 giây.')
+        left_header.addWidget(self.lblChromeCountdown)
         self.lblWMSState.setWordWrap(False)
         self.lblWMSState.setStyleSheet("font-size:11px;")
         self.lblWMSState.setMaximumWidth(110)
@@ -1003,6 +1013,8 @@ del /F /Q "{backup_exe}" >nul 2>&1
         # ==============================================================
         self.cotTab = ChromeCotTab(self.config, save_config, self)
         self.cotTab.bridge.sessionChanged.connect(self._chrome_session_changed)
+        self.cotTab.bridge.chromeVisibilityChanged.connect(self._chrome_visibility_changed)
+        self.cotTab.bridge.chromeCountdownChanged.connect(self._chrome_countdown_changed)
         self.mainTabs.addTab(self.cotTab, "⚡ COT")
 
         # ==============================================================
@@ -1178,6 +1190,20 @@ del /F /Q "{backup_exe}" >nul 2>&1
         self.connection_menu=QMenu(self)
         self.connection_menu.addAction('Mở Chrome riêng / Đăng nhập WMS',lambda:self.choose_wms_connection('chrome'))
         self.connection_menu.addAction('Dùng Chrome đang mở qua tiện ích',lambda:self.choose_wms_connection('extension'))
+        self.connection_menu.addSeparator()
+        bridge=self.cotTab.bridge
+        self.actionAutoHide=self.connection_menu.addAction('Tự động ẩn Chrome sau đăng nhập')
+        self.actionAutoHide.setCheckable(True)
+        self.actionAutoHide.setChecked(bridge.auto_hide)
+        self.actionAutoHide.toggled.connect(lambda enabled:bridge.set_auto_hide(enabled))
+        delay_menu=self.connection_menu.addMenu('Thời gian chờ trước khi ẩn')
+        self.chromeDelayActions={}
+        for seconds in (10,15,30,60,120):
+            action=delay_menu.addAction(f'{seconds} giây')
+            action.setCheckable(True)
+            action.setChecked(seconds==bridge.hide_delay)
+            action.triggered.connect(lambda _,value=seconds:self.change_chrome_hide_delay(value))
+            self.chromeDelayActions[seconds]=action
         self.btnLoginWMS.setMenu(self.connection_menu)
 
         # ===== Signal Excel hiện có =====
@@ -1214,10 +1240,36 @@ del /F /Q "{backup_exe}" >nul 2>&1
             from extension_bridge import show_extension_setup
             show_extension_setup(self,self.cotTab.bridge)
 
+    def change_chrome_hide_delay(self,seconds):
+        self.cotTab.bridge.set_auto_hide(self.actionAutoHide.isChecked(),seconds)
+        for value,action in self.chromeDelayActions.items():action.setChecked(value==seconds)
+
+    def _chrome_visibility_changed(self,visible):
+        self._chrome_is_visible=visible
+        self.btnChromeVisibility.setText('🙈 Ẩn Chrome' if visible else '👁 Hiện Chrome')
+        if not visible:self.lblChromeCountdown.clear()
+
+    def _chrome_countdown_changed(self,seconds):
+        self.lblChromeCountdown.setText(f'Ẩn sau {seconds}s' if seconds>0 else '')
+
+    def toggle_chrome_visibility(self):
+        bridge=self.cotTab.bridge
+        if bridge.mode!='chrome':
+            QMessageBox.information(self,'Chrome','Đang dùng Chrome Extension; hãy mở tab Chrome đang kết nối.')
+            return
+        if self._chrome_is_visible:
+            if not bridge.hide_chrome():
+                bridge.show_chrome()
+        else:
+            bridge.show_chrome()
+            self.lblChromeCountdown.clear()
+
     def _chrome_session_changed(self, connected, message):
         mode='Tiện ích Chrome' if self.cotTab.bridge.mode=='extension' else 'Chrome riêng'
         self.lblWMSState.setText(('🟢 ' if connected else '⚪ ')+mode)
         self.lblWMSState.setToolTip(message)
+        self.btnChromeVisibility.setEnabled(self.cotTab.bridge.mode=='chrome')
+        if self.cotTab.bridge.mode!='chrome':self.lblChromeCountdown.clear()
         self.set_banner_status(False, success=connected, custom_msg=("Đã kết nối WMS" if connected else "Chưa kết nối"))
         self.statusBanner.setToolTip(message)
 
