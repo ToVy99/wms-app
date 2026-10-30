@@ -21,7 +21,7 @@ jobs:
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force scan_build | Out-Null
-          python -c "import base64,hashlib,pathlib; b=base64.b64decode(pathlib.Path('tools/wms_scan_login/v2_0_source.zip.b64').read_text().strip()); assert hashlib.sha256(b).hexdigest() == '1eb3d9d0b2dc90b4e3aa0ef79d14cbeb262990812baecd4cf0a1816ecbeb0be2', 'Source checksum invalid'; pathlib.Path('v20_source.zip').write_bytes(b); print('Verified WMS v2.0 ZIP',len(b))"
+          python -c "import base64,hashlib,pathlib; b=base64.b64decode(pathlib.Path('tools/wms_scan_login/v2_0_source.zip.b64').read_text().strip()); assert hashlib.sha256(b).hexdigest() == '49842354177490dcbd1016b975e586699151e6d6215c05f5c0f71b54ba82700f', 'Source checksum invalid'; pathlib.Path('v20_source.zip').write_bytes(b); print('Verified WMS v2.0 ZIP',len(b))"
           if ($LASTEXITCODE -ne 0) { throw 'v2.0 source checksum mismatch' }
           Expand-Archive v20_source.zip -DestinationPath scan_build -Force
           foreach ($name in @('main.py','automation.py','pack.py','control.py','native_zoom.py','settings.py')) {
