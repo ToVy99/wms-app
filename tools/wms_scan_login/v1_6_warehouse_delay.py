@@ -160,7 +160,7 @@ a=p.read_text(encoding="utf-8")
 start=a.index("            # Set zoom before selecting the scan field")
 end=a.index("        except AutomationError:", start)
 assert end>start
-p.write_text(a[:start]+new+a[end:], encoding="utf-8")
+p.write_text(a[:start]+new+"\n"+a[end:], encoding="utf-8")
 change("main.py","validate_station_id, validate_zoom, ZOOM_PRESETS, write_config)",
                  "validate_station_id, validate_zoom, validate_warehouse, ZOOM_PRESETS, write_config)")
 change("main.py",'        self.station_labels = {}\n',
