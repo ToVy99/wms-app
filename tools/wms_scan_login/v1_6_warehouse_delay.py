@@ -156,7 +156,12 @@ new='''            # Choose the warehouse on the actual work tab. Some versions 
             status(f"{lane}: Đăng nhập thành công" +
                    (f" · Kho {warehouse}" if warehouse else " · Giữ kho hiện tại") +
                    (f" · Zoom {zoom_percent}%." if zoom_done else "."))'''
-change("automation.py",old,new)
+p=root/"automation.py"
+a=p.read_text(encoding="utf-8")
+start=a.index("            # Set zoom before selecting the scan field")
+end=a.index("        except AutomationError:", start)
+assert end>start
+p.write_text(a[:start]+new+a[end:], encoding="utf-8")
 change("main.py","validate_station_id, validate_zoom, ZOOM_PRESETS, write_config)",
                  "validate_station_id, validate_zoom, validate_warehouse, ZOOM_PRESETS, write_config)")
 change("main.py",'        self.station_labels = {}\n',
