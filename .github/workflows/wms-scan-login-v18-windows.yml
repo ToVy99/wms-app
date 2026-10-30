@@ -21,7 +21,7 @@ jobs:
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force scan_build | Out-Null
-          python -c "import base64,hashlib,pathlib; b=base64.b64decode(pathlib.Path('tools/wms_scan_login/v1_8_source.zip.b64').read_text().strip()); assert hashlib.sha256(b).hexdigest() == 'd0c0826a92caa3a84f5776c76fc6fe755f6e14354d9feb159e83deca3b1a6940','Source checksum mismatch'; pathlib.Path('scan_build_source.zip').write_bytes(b); print('Verified source ZIP:',len(b))"
+          python -c "import base64,hashlib,pathlib; b=base64.b64decode(pathlib.Path('tools/wms_scan_login/v1_8_source.zip.b64').read_text().strip()); assert hashlib.sha256(b).hexdigest() == '3243e8ffe84226c01e362207a5dcdcf284f5e9bb66fa841a30a391628d9b8dbf','Source checksum mismatch'; pathlib.Path('scan_build_source.zip').write_bytes(b); print('Verified source ZIP:',len(b))"
           if ($LASTEXITCODE -ne 0) { throw "Source checksum invalid" }
           Expand-Archive scan_build_source.zip -DestinationPath scan_build -Force
           if (-not (Test-Path scan_build/automation.py)) { throw 'Missing v1.8 automation.py' }
