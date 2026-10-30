@@ -5,6 +5,7 @@ on:
     paths:
       - "tools/wms_scan_login/v19_native_zoom.py.zlib.b64"
       - "tools/wms_scan_login/v19_zoom_tests.py"
+      - "tools/wms_scan_login/v19_native_integration.py"
       - ".github/workflows/wms-scan-login-v19-windows.yml"
   workflow_dispatch:
 permissions:
@@ -43,6 +44,13 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'Python source syntax error' }
           python -m unittest discover -s tests -v
           if ($LASTEXITCODE -ne 0) { throw 'Python regression suite failed' }
+      - name: Check real Chrome page zoom with Win32 virtual keys (non-WMS)
+        shell: pwsh
+        continue-on-error: true
+        timeout-minutes: 2
+        run: |
+          python tools/wms_scan_login/v19_native_integration.py
+          if (Test-Path wms_native_zoom_smoke_result.txt) { Get-Content wms_native_zoom_smoke_result.txt }
       - name: Build portable EXE and diagnostic launcher
         working-directory: scan_build
         shell: pwsh
@@ -76,5 +84,6 @@ jobs:
             scan_build/dist/WMS_Scan_Login.exe
             wms_scan_smoke_result.txt
             wms_ui_smoke_result.txt
+            wms_native_zoom_smoke_result.txt
           retention-days: 14
           if-no-files-found: error
