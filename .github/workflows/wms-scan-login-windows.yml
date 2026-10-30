@@ -46,6 +46,10 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'Cannot apply v1.5 zoom patch' }
           python tools/wms_scan_login/v1_5_smoke_patch.py
           if ($LASTEXITCODE -ne 0) { throw 'Cannot patch high DPI smoke test' }
+      - name: Inspect previous Chrome flow for compatible v1.6 patch
+        shell: pwsh
+        run: |
+          python -c "from pathlib import Path; a=Path('scan_build/automation.py').read_text(encoding='utf-8'); print('---WMS-FLOW---'); print(a[a.index('            # A login tab can usually be closed'):][-4000:]); print('---END-WMS-FLOW---')"
       - name: Add CHECK/PACK warehouse selector and delayed zoom (v1.6)
         shell: pwsh
         run: |
