@@ -17,7 +17,7 @@ change("settings.py", "def read_config() -> dict:\n", '''def validate_warehouse(
     value=" ".join(str(value or "").strip().upper().split())
     if not value:
         return ""
-    m=re.fullmatch(r"VN\\s*-\\s*([A-Z0-9]{2,12})",value)
+    m=re.fullmatch(r"VN\s*-\s*([A-Z0-9]{2,12})",value)
     if not m:
         raise ValueError("Tên kho phải có dạng VN - VNA, VN - VNG, VN - VNN...")
     return "VN - "+m.group(1)
@@ -46,9 +46,9 @@ def _warehouse_elements(driver):
     elements=driver.execute_script("""
         return [...document.querySelectorAll('button,span,div,li,a,[role=option]')]
             .filter(el=>{
-                const t=(el.textContent||'').replace(/\\s+/g,' ').trim();
+                const t=(el.textContent||'').replace(/\s+/g,' ').trim();
                 const r=el.getBoundingClientRect();
-                return /^VN\\s*-\\s*[A-Z0-9]{2,12}$/i.test(t)
+                return /^VN\s*-\s*[A-Z0-9]{2,12}$/i.test(t)
                     && r.x>=0 && r.x<430 && r.y>=0 && r.y<900
                     && r.width>1 && r.height>5 && el.getClientRects().length;
             }).slice(0,80);
