@@ -53,6 +53,7 @@ jobs:
       - name: Add CHECK/PACK warehouse selector and delayed zoom (v1.6)
         shell: pwsh
         run: |
+          python -c "from pathlib import Path; s=Path('scan_build/automation.py').read_text(encoding='utf-8'); print(s[-3000:].encode('ascii','backslashreplace').decode())"
           python tools/wms_scan_login/v1_6_warehouse_delay.py
           if ($LASTEXITCODE -ne 0) { throw "Failed to apply v1.6 warehouse/zoom patch" }
       - name: Install Python dependencies
