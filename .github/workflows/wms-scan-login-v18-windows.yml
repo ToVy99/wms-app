@@ -4,7 +4,7 @@ on:
     branches: [wms-scan-login-v18-native-zoom]
     paths:
       - "tools/wms_scan_login/v1_8_source.zip.b64"
-      - ".github/workflows/wms-scan-login-v17-windows.yml"
+      - ".github/workflows/wms-scan-login-v18-windows.yml"
   workflow_dispatch:
 permissions:
   contents: read
