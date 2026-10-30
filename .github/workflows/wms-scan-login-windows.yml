@@ -46,14 +46,6 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'Cannot apply v1.5 zoom patch' }
           python tools/wms_scan_login/v1_5_smoke_patch.py
           if ($LASTEXITCODE -ne 0) { throw 'Cannot patch high DPI smoke test' }
-      - name: Apply v1.6 warehouse selection and delayed zoom
-        shell: pwsh
-        run: |
-          python -c "import base64,zlib,pathlib; p=pathlib.Path('tools/wms_scan_login/v1_6_warehouse_patch.py.zlib.b64'); b=zlib.decompress(base64.b64decode(p.read_text().strip())); pathlib.Path('scan_build/apply_v16.py').write_bytes(b); print('v1.6 patch:',len(b),'bytes')"
-          if ($LASTEXITCODE -ne 0) { throw 'Cannot decode v1.6 patch' }
-          python -c "from pathlib import Path; s=Path('scan_build/automation.py').read_text(encoding='utf-8'); print('---AUTOMATION FLOW START---'); print(s[s.index('login_tab ='):][-3400:]); print('---AUTOMATION FLOW END---')"
-          python scan_build/apply_v16.py
-          if ($LASTEXITCODE -ne 0) { throw 'v1.6 patch application failed' }
       - name: Add CHECK/PACK warehouse selector and delayed zoom (v1.6)
         shell: pwsh
         run: |
