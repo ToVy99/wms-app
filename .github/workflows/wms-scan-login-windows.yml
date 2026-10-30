@@ -40,6 +40,8 @@ jobs:
         run: |
           python -c "import base64,zlib,pathlib; p=pathlib.Path('tools/wms_scan_login/v1_5_zoom_patch.py.zlib.b64'); b=zlib.decompress(base64.b64decode(p.read_text().strip())); pathlib.Path('scan_build/apply_v15.py').write_bytes(b); print('Zoom patch:', len(b), 'bytes')"
           if ($LASTEXITCODE -ne 0) { throw 'Cannot decompress zoom patch' }
+          python tools/wms_scan_login/v1_5_prepatch.py
+          if ($LASTEXITCODE -ne 0) { throw 'Cannot normalize station input for v1.5' }
           python scan_build/apply_v15.py
           if ($LASTEXITCODE -ne 0) { throw 'Cannot apply v1.5 zoom patch' }
           python tools/wms_scan_login/v1_5_smoke_patch.py
