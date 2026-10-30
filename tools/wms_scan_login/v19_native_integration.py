@@ -34,6 +34,6 @@ if __name__=="__main__":
         result=run()
     except Exception as exc:
         result=f"FAIL: {type(exc).__name__}: {str(exc)[:300]}"
-    print(result)
+    print(result.encode("ascii","backslashreplace").decode("ascii"))
     Path("wms_native_zoom_smoke_result.txt").write_text(result+"\n",encoding="utf-8")
     sys.exit(1 if result.startswith("FAIL") else 0)
