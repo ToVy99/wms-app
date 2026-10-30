@@ -25,3 +25,14 @@ b = '''        assert app.settings_win.winfo_exists(), "settings window missing"
 s = p.read_text(encoding="utf-8")
 assert s.count(a) == 1, "Missing zoom UI smoke section"
 p.write_text(s.replace(a, b), encoding="utf-8")
+
+# ttk Combobox option access differs across Windows Tcl versions.
+s = p.read_text(encoding="utf-8")
+a = '        self.zoom_selector.pack(side="right", ipady=5, padx=(10, 0))'
+b = a + '\n        self.zoom_selector.state(["readonly"])'
+assert s.count(a) == 1, "zoom widget placement missing"
+s = s.replace(a, b)
+a = '        assert app.zoom_selector.cget("state") == "readonly", "zoom selector not readonly"'
+b = '        assert app.zoom_selector.instate(["readonly"]), "zoom selector not readonly"'
+assert s.count(a) == 1, "readonly assertion missing"
+p.write_text(s.replace(a, b), encoding="utf-8")
