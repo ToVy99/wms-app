@@ -1,7 +1,7 @@
 name: Build WMS Scan Login v2.1 Windows EXE
 on:
   push:
-    branches: [wms-scan-login-v21-pack-intervention]
+    branches: [wms-scan-login-v21-compact-chrome-switch]
     paths:
       - "tools/wms_scan_login/v21_apply.py"
       - ".github/workflows/wms-scan-login-v21-windows.yml"
