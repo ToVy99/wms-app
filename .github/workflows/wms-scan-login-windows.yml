@@ -35,6 +35,15 @@ jobs:
       - name: Keep advanced settings visible on laptops
         run: |
           python tools/wms_scan_login/v1_4_ui_polish.py
+      - name: Enable configurable 75 percent Chrome zoom (v1.5)
+        shell: pwsh
+        run: |
+          python -c "import base64,zlib,pathlib; p=pathlib.Path('tools/wms_scan_login/v1_5_zoom_patch.py.zlib.b64'); b=zlib.decompress(base64.b64decode(p.read_text().strip())); pathlib.Path('scan_build/apply_v15.py').write_bytes(b); print('Zoom patch:', len(b), 'bytes')"
+          if ($LASTEXITCODE -ne 0) { throw 'Cannot decompress zoom patch' }
+          python scan_build/apply_v15.py
+          if ($LASTEXITCODE -ne 0) { throw 'Cannot apply v1.5 zoom patch' }
+          python tools/wms_scan_login/v1_5_smoke_patch.py
+          if ($LASTEXITCODE -ne 0) { throw 'Cannot patch high DPI smoke test' }
       - name: Install Python dependencies
         working-directory: scan_build
         run: |
@@ -82,7 +91,7 @@ jobs:
       - name: Upload EXE and diagnostics
         uses: actions/upload-artifact@v4
         with:
-          name: WMS_Scan_Login_Windows_EXE_v1_4
+          name: WMS_Scan_Login_Windows_EXE_v1_5
           path: |
             scan_build/dist/WMS_Scan_Login.exe
             wms_scan_smoke_result.txt
