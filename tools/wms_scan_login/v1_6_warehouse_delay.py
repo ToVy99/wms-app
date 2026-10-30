@@ -119,10 +119,10 @@ old='''            # Set zoom before selecting the scan field so Ctrl+- cannot b
             station_code = cfg.get("check_station_id" if lane == "CHECK" else "pack_station_id", "")
             if station_code and station_code.strip():
                 try:
-                    _enter_station(driver, station_code, lambda msg: status(f"{lane}: {msg}"))
-                except (AutomationError, WebDriverException, ValueError) as exc:
+                    _enter_station(driver,station_code,lambda msg: status(f"{lane}: {msg}"))
+                except (AutomationError,WebDriverException,ValueError) as exc:
                     # A station failure must not undo the successful login.
-                    status(f"{lane}: Đã đăng nhập và mở trang, nhưng chưa nhập được mã trạm: {exc}")
+                    status(f"{lane}: Đã mở trang, nhưng chưa nhập được mã trạm: {exc}")
                     return
             status(f"{lane}: Đăng nhập thành công và đã mở trang {lane}" +
                    (f" · Zoom {zoom_percent}%." if zoom_done else "."))'''
