@@ -1,0 +1,75 @@
+name: Build WMS Scan Login v1.7 Windows EXE
+on:
+  push:
+    branches: [wms-scan-login-v17-stable-wait]
+    paths:
+      - "tools/wms_scan_login/v1_7_source.zip"
+      - ".github/workflows/wms-scan-login-v17-windows.yml"
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  build-exe:
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Extract complete v1.7 source
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force scan_build | Out-Null
+          Expand-Archive tools/wms_scan_login/v1_7_source.zip -DestinationPath scan_build -Force
+          if (-not (Test-Path scan_build/automation.py)) { throw 'Missing v1.7 automation.py' }
+          if (-not (Test-Path scan_build/main.py)) { throw 'Missing v1.7 main.py' }
+          if (-not (Test-Path scan_build/settings.py)) { throw 'Missing v1.7 settings.py' }
+      - name: Install build and runtime dependencies
+        working-directory: scan_build
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt
+      - name: Validate syntax, controls, warehouse reload and station flow
+        working-directory: scan_build
+        run: |
+          python -m compileall -q .
+          python -m unittest discover -s tests -v
+      - name: Build Windows portable GUI and console diagnostic
+        working-directory: scan_build
+        shell: pwsh
+        run: |
+          $extra = @("--collect-all", "selenium", "--collect-all", "trio", "--collect-all", "trio_websocket", "--collect-all", "websocket", "--collect-all", "urllib3", "--collect-all", "certifi", "--collect-all", "sniffio", "--collect-all", "attrs")
+          python -m PyInstaller --noconfirm --clean --onefile --windowed --name WMS_Scan_Login @extra main.py
+          if ($LASTEXITCODE -ne 0) { throw "Windows GUI build failed" }
+          python -m PyInstaller --noconfirm --onefile --console --name WMS_Scan_Login_Diagnostic @extra main.py
+          if ($LASTEXITCODE -ne 0) { throw "Diagnostic build failed" }
+      - name: Run frozen EXE station/zoom smoke test
+        shell: pwsh
+        run: |
+          $gui = (Resolve-Path "scan_build/dist/WMS_Scan_Login.exe").Path
+          $diag = (Resolve-Path "scan_build/dist/WMS_Scan_Login_Diagnostic.exe").Path
+          if ((Get-Item $gui).Length -lt 2000000) { throw "EXE unexpectedly small" }
+          $bytes = [System.IO.File]::ReadAllBytes($gui)
+          if ($bytes[0] -ne 77 -or $bytes[1] -ne 90) { throw "Invalid Windows executable header" }
+          & $diag --self-test
+          if ($LASTEXITCODE -ne 0) { throw "Frozen Selenium/Chrome smoke failed" }
+          if (-not ((Get-Content wms_scan_smoke_result.txt -Raw) -match "PASS")) { throw "Missing Chrome PASS report" }
+          & $gui --self-test
+          if ($LASTEXITCODE -ne 0) { throw "GUI EXE smoke failed" }
+      - name: Run frozen EXE UI smoke test
+        shell: pwsh
+        run: |
+          & (Resolve-Path "scan_build/dist/WMS_Scan_Login_Diagnostic.exe").Path --ui-smoke
+          if ($LASTEXITCODE -ne 0) { throw "Frozen UI smoke failed" }
+          if (-not ((Get-Content wms_ui_smoke_result.txt -Raw) -match "PASS")) { throw "Missing GUI PASS report" }
+      - name: Upload release artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: WMS_Scan_Login_Windows_EXE_v1_7
+          path: |
+            scan_build/dist/WMS_Scan_Login.exe
+            wms_scan_smoke_result.txt
+            wms_ui_smoke_result.txt
+          retention-days: 14
+          if-no-files-found: error
