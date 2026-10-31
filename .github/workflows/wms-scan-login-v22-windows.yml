@@ -102,13 +102,13 @@ jobs:
           $exe = (Resolve-Path 'scan_build/dist/WMS_Scan_Login/WMS_Scan_Login.exe').Path
           $bytes = [System.IO.File]::ReadAllBytes($exe)
           if ($bytes.Length -lt 2000000 -or $bytes[0] -ne 77 -or $bytes[1] -ne 90) { throw 'Invalid Windows EXE' }
-          & $exe --self-test
-          $selfCode = $LASTEXITCODE
+          $test = Start-Process -FilePath $exe -ArgumentList "--self-test" -Wait -PassThru -WorkingDirectory (Get-Location).Path
+          $selfCode = $test.ExitCode
           if (Test-Path wms_scan_smoke_result.txt) { Get-Content wms_scan_smoke_result.txt }
           if ($selfCode -ne 0) { throw "Chrome/Station EXE smoke test failed: code $selfCode" }
           if (-not ((Get-Content wms_scan_smoke_result.txt -Raw) -match 'PASS')) { throw 'Chrome smoke report missing' }
-          & $exe --ui-smoke
-          $uiCode = $LASTEXITCODE
+          $test = Start-Process -FilePath $exe -ArgumentList "--ui-smoke" -Wait -PassThru -WorkingDirectory (Get-Location).Path
+          $uiCode = $test.ExitCode
           if (Test-Path wms_ui_smoke_result.txt) { Get-Content wms_ui_smoke_result.txt }
           if ($uiCode -ne 0) { throw "Mini GUI smoke failed: code $uiCode" }
           if (-not ((Get-Content wms_ui_smoke_result.txt -Raw) -match 'PASS')) { throw 'GUI smoke report missing' }
