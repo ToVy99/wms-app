@@ -7,10 +7,13 @@ on:
       - "tools/wms_scan_login/v23_test_halfsized.py"
       - "tools/wms_scan_login/v24_fast_zoom_patch.zlib.b64"
       - "tools/wms_scan_login/v24_fast_zoom_tests.py"
-      - ".github/workflows/wms-scan-login-v23-windows.yml"
+      - ".github/workflows/wms-scan-login-v24-windows.yml"
   workflow_dispatch:
 permissions:
   contents: read
+env:
+  PYTHONUTF8: '1'
+  PYTHONIOENCODING: 'utf-8'
 jobs:
   build-exe:
     runs-on: windows-latest
