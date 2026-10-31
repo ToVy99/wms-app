@@ -7,6 +7,7 @@ on:
       - "tools/wms_scan_login/v23_test_halfsized.py"
       - "tools/wms_scan_login/v24_fast_zoom_patch.zlib.b64"
       - "tools/wms_scan_login/v24_fast_zoom_tests.py"
+      - "tools/wms_scan_login/v24_fix_tests.py"
       - ".github/workflows/wms-scan-login-v24-windows.yml"
   workflow_dispatch:
 permissions:
@@ -100,10 +101,14 @@ jobs:
         run: |
           python -c "import base64,zlib,pathlib; p=pathlib.Path('tools/wms_scan_login/v24_fast_zoom_patch.zlib.b64'); b=zlib.decompress(base64.b64decode(p.read_text().strip())); pathlib.Path('v24_patch.diff').write_bytes(b); print('v2.4 patch bytes:',len(b))"
           if ($LASTEXITCODE -ne 0) { throw 'Could not restore v2.4 zoom patch' }
+          python tools/wms_scan_login/v24_fix_tests.py strip
+          if ($LASTEXITCODE -ne 0) { throw "Could not normalize v2.4 source patch" }
           git apply --check v24_patch.diff
           if ($LASTEXITCODE -ne 0) { throw 'v2.4 patch incompatible with v2.3' }
           git apply --whitespace=nowarn v24_patch.diff
           if ($LASTEXITCODE -ne 0) { throw 'v2.4 patch failed' }
+          python tools/wms_scan_login/v24_fix_tests.py tests
+          if ($LASTEXITCODE -ne 0) { throw "Could not update regression tests" }
           Copy-Item tools/wms_scan_login/v24_fast_zoom_tests.py scan_build/tests/test_v24_fast_zoom.py
           python -c "from pathlib import Path; a=Path('scan_build/automation.py').read_text(encoding='utf-8'); p=Path('scan_build/pack.py').read_text(encoding='utf-8'); assert 'stable_for=0.45' in a and 'WMS đã sẵn sàng → Zoom Chrome ngay' in a and 'Zoom ngay' in p"
           if ($LASTEXITCODE -ne 0) { throw 'v2.4 source validation failed' }
