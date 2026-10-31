@@ -31,13 +31,29 @@ jobs:
         run: |
           python tools/wms_scan_login/v21_apply.py
           if ($LASTEXITCODE -ne 0) { throw 'Failed to apply v2.1 patch' }
-      - name: Upload base v2.1 main source for compatibility diagnostics
-        uses: actions/upload-artifact@v4
-        with:
-          name: WMS_v21_Base_Main_Debug
-          path: scan_build/main.py
-          if-no-files-found: error
-          retention-days: 1
+      - name: Normalize source formatting difference between local v2.1 and v2.1 Actions
+        shell: pwsh
+        run: |
+          @'
+          from pathlib import Path
+          p=Path('scan_build/main.py')
+          s=p.read_text(encoding='utf-8')
+          fixes=[
+            ('            tab.pack(side="left", fill="x", expand=True,\\n                     padx=(0, 5) if lane == "CHECK" else (5, 0))',
+             '            tab.pack(side="left", fill="x", expand=True, padx=(0, 5) if lane == "CHECK" else (5, 0))'),
+            ('        """Display only selected lane and prevent mid-login lane changes."""',
+             '        """Only one barcode input is visible. A running workflow cannot switch lanes."""'),
+            ('            selected = which == lane\\n            tab.configure(bg=(BLUE if which == "CHECK" else PURPLE) if selected else WHITE,\\n                          fg=WHITE if selected else TEXT,\\n                          relief="sunken" if selected else "flat")',
+             '            chosen = which == lane\\n            tab.configure(bg=(BLUE if which == "CHECK" else PURPLE) if chosen else WHITE,\\n                          fg=WHITE if chosen else TEXT,\\n                          relief="sunken" if chosen else "flat")')
+          ]
+          for old,new in fixes:
+              old=old.replace('\\n','\n')
+              new=new.replace('\\n','\n')
+              assert s.count(old)==1, ('Unexpected base source format',old[:50],s.count(old))
+              s=s.replace(old,new)
+          p.write_text(s,encoding='utf-8')
+          '@ | python -
+          if ($LASTEXITCODE -ne 0) { throw 'v2.1 source normalization failed' }
       - name: Apply tested v2.2 compact and startup-speed patch
         shell: pwsh
         run: |
