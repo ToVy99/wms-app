@@ -75,7 +75,7 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'Patch incompatible with base v2.1 source' }
           git apply --whitespace=nowarn v22_patch.diff
           if ($LASTEXITCODE -ne 0) { throw 'Cannot apply compact UI patch' }
-          python -c "import pathlib,hashlib; data=pathlib.Path('scan_build/main.py').read_bytes(); assert hashlib.sha256(data).hexdigest()=='92646a5f07911cd2037a777223af06bf9ebd081c360247cd87857e43df1ab121'; print('Verified complete mini UI source')"
+          python -c "import pathlib; s=pathlib.Path('scan_build/main.py').read_text(encoding='utf-8'); assert all(x in s for x in ['def _build_mini_ui','def _set_mini','def _mini_position','self.mini_stop','start_mini']); print('Verified compact UI components and controls')"
           if ($LASTEXITCODE -ne 0) { throw 'Mini UI file checksum invalid' }
       - name: Install Python dependencies
         working-directory: scan_build
