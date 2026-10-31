@@ -1,0 +1,1 @@
+v2.2: compact bottom-left window and PyInstaller onedir optimization.
