@@ -5,7 +5,7 @@ on:
     paths:
       - "tools/wms_scan_login/v23_patch.zlib.b64"
       - "tools/wms_scan_login/v23_test_halfsized.py"
-      - ".github/workflows/wms-scan-login-v22-windows.yml"
+      - ".github/workflows/wms-scan-login-v23-windows.yml"
   workflow_dispatch:
 permissions:
   contents: read
