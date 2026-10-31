@@ -1,10 +1,12 @@
-name: Build WMS Scan Login v2.3 Half-height Mini Windows
+name: Build WMS Scan Login v2.4 Instant Zoom Windows
 on:
   push:
-    branches: [wms-scan-login-v23-half-mini-1s-zoom]
+    branches: [wms-scan-login-v24-instant-zoom]
     paths:
       - "tools/wms_scan_login/v23_patch.zlib.b64"
       - "tools/wms_scan_login/v23_test_halfsized.py"
+      - "tools/wms_scan_login/v24_fast_zoom_patch.zlib.b64"
+      - "tools/wms_scan_login/v24_fast_zoom_tests.py"
       - ".github/workflows/wms-scan-login-v23-windows.yml"
   workflow_dispatch:
 permissions:
@@ -90,6 +92,18 @@ jobs:
           Copy-Item tools/wms_scan_login/v23_test_halfsized.py scan_build/tests/test_v23_halfsized.py
           python -c "from pathlib import Path; a=Path('scan_build/automation.py').read_text(); p=Path('scan_build/pack.py').read_text(); m=Path('scan_build/main.py').read_text(); assert 'sleep(1)' in a and 'sleep(1)' in p and 'MINI_HEIGHT = 115' in m; print('Verified 1s CHECK/PACK and 115px Mini')"
           if ($LASTEXITCODE -ne 0) { throw 'v2.3 source validation failed' }
+      - name: Apply v2.4 immediate Zoom after successful station acknowledgement
+        shell: pwsh
+        run: |
+          python -c "import base64,zlib,pathlib; p=pathlib.Path('tools/wms_scan_login/v24_fast_zoom_patch.zlib.b64'); b=zlib.decompress(base64.b64decode(p.read_text().strip())); pathlib.Path('v24_patch.diff').write_bytes(b); print('v2.4 patch bytes:',len(b))"
+          if ($LASTEXITCODE -ne 0) { throw 'Could not restore v2.4 zoom patch' }
+          git apply --check v24_patch.diff
+          if ($LASTEXITCODE -ne 0) { throw 'v2.4 patch incompatible with v2.3' }
+          git apply --whitespace=nowarn v24_patch.diff
+          if ($LASTEXITCODE -ne 0) { throw 'v2.4 patch failed' }
+          Copy-Item tools/wms_scan_login/v24_fast_zoom_tests.py scan_build/tests/test_v24_fast_zoom.py
+          python -c "from pathlib import Path; a=Path('scan_build/automation.py').read_text(); p=Path('scan_build/pack.py').read_text(); assert 'stable_for=0.45' in a and 'WMS đã sẵn sàng → Zoom Chrome ngay' in a and 'Zoom ngay' in p"
+          if ($LASTEXITCODE -ne 0) { throw 'v2.4 source validation failed' }
       - name: Install Python dependencies
         working-directory: scan_build
         run: |
@@ -144,7 +158,7 @@ jobs:
       - name: Upload Windows EXE
         uses: actions/upload-artifact@v4
         with:
-          name: WMS_Auto_Login_v2_3_Portable_Windows
+          name: WMS_Auto_Login_v2_4_Portable_Windows
           path: |
             scan_build/dist/WMS_Scan_Login/**
             wms_scan_smoke_result.txt
