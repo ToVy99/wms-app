@@ -88,7 +88,7 @@ jobs:
           git apply --whitespace=nowarn v23_patch.diff
           if ($LASTEXITCODE -ne 0) { throw 'Failed applying v2.3 source patch' }
           Copy-Item tools/wms_scan_login/v23_test_halfsized.py scan_build/tests/test_v23_halfsized.py
-          python -c "from pathlib import Path; a=Path('scan_build/automation.py').read_text(); p=Path('scan_build/pack.py').read_text(); m=Path('scan_build/main.py').read_text(encoding='utf-8'); assert 'sleep(1)' in a and 'sleep(1)' in p and 'MINI_HEIGHT = 115' in m; print('Verified 1s CHECK/PACK and 115px Mini')"
+          python -c "from pathlib import Path; a=Path('scan_build/automation.py').read_text(encoding='utf-8'); p=Path('scan_build/pack.py').read_text(encoding='utf-8'); m=Path('scan_build/main.py').read_text(encoding='utf-8'); assert 'sleep(1)' in a and 'sleep(1)' in p and 'MINI_HEIGHT = 115' in m; print('Verified 1s CHECK/PACK and 115px Mini')"
           if ($LASTEXITCODE -ne 0) { throw 'v2.3 source validation failed' }
       - name: Install Python dependencies
         working-directory: scan_build
