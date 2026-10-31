@@ -103,11 +103,25 @@ jobs:
           $bytes = [System.IO.File]::ReadAllBytes($exe)
           if ($bytes.Length -lt 2000000 -or $bytes[0] -ne 77 -or $bytes[1] -ne 90) { throw 'Invalid Windows EXE' }
           & $exe --self-test
-          if ($LASTEXITCODE -ne 0) { throw 'Chrome/Station EXE smoke test failed' }
+          $selfCode = $LASTEXITCODE
+          if (Test-Path wms_scan_smoke_result.txt) { Get-Content wms_scan_smoke_result.txt }
+          if ($selfCode -ne 0) { throw "Chrome/Station EXE smoke test failed: code $selfCode" }
           if (-not ((Get-Content wms_scan_smoke_result.txt -Raw) -match 'PASS')) { throw 'Chrome smoke report missing' }
           & $exe --ui-smoke
-          if ($LASTEXITCODE -ne 0) { throw 'Mini GUI smoke failed' }
+          $uiCode = $LASTEXITCODE
+          if (Test-Path wms_ui_smoke_result.txt) { Get-Content wms_ui_smoke_result.txt }
+          if ($uiCode -ne 0) { throw "Mini GUI smoke failed: code $uiCode" }
           if (-not ((Get-Content wms_ui_smoke_result.txt -Raw) -match 'PASS')) { throw 'GUI smoke report missing' }
+      - name: Upload diagnostic reports even if smoke test fails
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: WMS_v22_Failed_Smoke_Reports
+          path: |
+            wms_scan_smoke_result.txt
+            wms_ui_smoke_result.txt
+          if-no-files-found: warn
+          retention-days: 1
       - name: Verify ZIP structure for portable folder
         shell: pwsh
         run: |
