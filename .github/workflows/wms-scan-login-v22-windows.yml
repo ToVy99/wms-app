@@ -31,6 +31,13 @@ jobs:
         run: |
           python tools/wms_scan_login/v21_apply.py
           if ($LASTEXITCODE -ne 0) { throw 'Failed to apply v2.1 patch' }
+      - name: Upload base v2.1 main source for compatibility diagnostics
+        uses: actions/upload-artifact@v4
+        with:
+          name: WMS_v21_Base_Main_Debug
+          path: scan_build/main.py
+          if-no-files-found: error
+          retention-days: 1
       - name: Apply tested v2.2 compact and startup-speed patch
         shell: pwsh
         run: |
