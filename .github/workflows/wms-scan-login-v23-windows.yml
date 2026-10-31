@@ -1,0 +1,153 @@
+name: Build WMS Scan Login v2.3 Half-height Mini Windows
+on:
+  push:
+    branches: [wms-scan-login-v23-half-mini-1s-zoom]
+    paths:
+      - "tools/wms_scan_login/v23_patch.zlib.b64"
+      - "tools/wms_scan_login/v23_test_halfsized.py"
+      - ".github/workflows/wms-scan-login-v22-windows.yml"
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  build-exe:
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Extract verified v2.1 source
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force scan_build | Out-Null
+          python -c "import base64,hashlib,pathlib; b=base64.b64decode(pathlib.Path('tools/wms_scan_login/v2_0_source.zip.b64').read_text().strip()); assert hashlib.sha256(b).hexdigest() == '49842354177490dcbd1016b975e586699151e6d6215c05f5c0f71b54ba82700f', 'Source checksum invalid'; pathlib.Path('v21_source.zip').write_bytes(b); print('Verified WMS v2.1 ZIP',len(b))"
+          if ($LASTEXITCODE -ne 0) { throw 'v2.1 source checksum mismatch' }
+          Expand-Archive v21_source.zip -DestinationPath scan_build -Force
+          foreach ($name in @('main.py','automation.py','pack.py','control.py','native_zoom.py','settings.py')) {
+            if (-not (Test-Path (Join-Path 'scan_build' $name))) { throw "Missing $name" }
+          }
+      - name: Apply compact v2.1 UI and Chrome management
+        run: |
+          python tools/wms_scan_login/v21_apply.py
+          if ($LASTEXITCODE -ne 0) { throw 'Failed to apply v2.1 patch' }
+      - name: Normalize source formatting difference between local v2.1 and v2.1 Actions
+        shell: pwsh
+        run: |
+          @'
+          from pathlib import Path
+          p=Path('scan_build/main.py')
+          s=p.read_text(encoding='utf-8')
+          fixes=[
+            ('            tab.pack(side="left", fill="x", expand=True,\\n                     padx=(0, 5) if lane == "CHECK" else (5, 0))',
+             '            tab.pack(side="left", fill="x", expand=True, padx=(0, 5) if lane == "CHECK" else (5, 0))'),
+            ('        """Display only selected lane and prevent mid-login lane changes."""',
+             '        """Only one barcode input is visible. A running workflow cannot switch lanes."""'),
+            ('            selected = which == lane\\n            tab.configure(bg=(BLUE if which == "CHECK" else PURPLE) if selected else WHITE,\\n                          fg=WHITE if selected else TEXT,\\n                          relief="sunken" if selected else "flat")',
+             '            chosen = which == lane\\n            tab.configure(bg=(BLUE if which == "CHECK" else PURPLE) if chosen else WHITE,\\n                          fg=WHITE if chosen else TEXT,\\n                          relief="sunken" if chosen else "flat")')
+          ]
+          for old,new in fixes:
+              old=old.replace('\\n','\n')
+              new=new.replace('\\n','\n')
+              assert s.count(old)==1, ('Unexpected base source format',old[:50],s.count(old))
+              s=s.replace(old,new)
+          p.write_text(s,encoding='utf-8')
+          '@ | python -
+          if ($LASTEXITCODE -ne 0) { throw 'v2.1 source normalization failed' }
+      - name: Apply tested v2.2 compact and startup-speed patch
+        shell: pwsh
+        run: |
+          @'
+          import base64, hashlib, json, pathlib, zlib
+          files = sorted(pathlib.Path('tools/wms_scan_login').glob('v22_payload_part*.b64'))
+          assert len(files) == 8, f'Expected 8 source chunks, received {len(files)}'
+          data = ''.join(f.read_text(encoding='utf-8').strip() for f in files)
+          patch = json.loads(zlib.decompress(base64.b64decode(data)))
+          pathlib.Path('v22_patch.diff').write_text(patch['patch'], encoding='utf-8')
+          for name, content in patch['new_files'].items():
+              path = pathlib.Path('scan_build') / name
+              path.parent.mkdir(parents=True, exist_ok=True)
+              path.write_text(content, encoding='utf-8')
+          print('v2.2 compact patch ready')
+          '@ | python -
+          if ($LASTEXITCODE -ne 0) { throw 'Cannot restore v2.2 source patch' }
+          git apply --check v22_patch.diff
+          if ($LASTEXITCODE -ne 0) { throw 'Patch incompatible with base v2.1 source' }
+          git apply --whitespace=nowarn v22_patch.diff
+          if ($LASTEXITCODE -ne 0) { throw 'Cannot apply compact UI patch' }
+          python -c "import pathlib; s=pathlib.Path('scan_build/main.py').read_text(encoding='utf-8'); assert all(x in s for x in ['def _build_mini_ui','def _set_mini','def _mini_position','self.mini_stop','start_mini']); print('Verified compact UI components and controls')"
+          if ($LASTEXITCODE -ne 0) { throw 'Mini UI file checksum invalid' }
+      - name: Apply v2.3 half-height Mini and one-second Zoom patch
+        shell: pwsh
+        run: |
+          python -c "import base64,zlib,pathlib; p=pathlib.Path('tools/wms_scan_login/v23_patch.zlib.b64'); data=zlib.decompress(base64.b64decode(p.read_text().strip())); pathlib.Path('v23_patch.diff').write_bytes(data); print('v2.3 patch bytes:',len(data))"
+          if ($LASTEXITCODE -ne 0) { throw 'Cannot decode v2.3 source patch' }
+          git apply --check v23_patch.diff
+          if ($LASTEXITCODE -ne 0) { throw 'v2.3 patch incompatible with current v2.2 source' }
+          git apply --whitespace=nowarn v23_patch.diff
+          if ($LASTEXITCODE -ne 0) { throw 'Failed applying v2.3 source patch' }
+          Copy-Item tools/wms_scan_login/v23_test_halfsized.py scan_build/tests/test_v23_halfsized.py
+          python -c "from pathlib import Path; a=Path('scan_build/automation.py').read_text(); p=Path('scan_build/pack.py').read_text(); m=Path('scan_build/main.py').read_text(); assert 'sleep(1)' in a and 'sleep(1)' in p and 'MINI_HEIGHT = 115' in m; print('Verified 1s CHECK/PACK and 115px Mini')"
+          if ($LASTEXITCODE -ne 0) { throw 'v2.3 source validation failed' }
+      - name: Install Python dependencies
+        working-directory: scan_build
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt
+      - name: Validate code and run regression plus PACK/controls synthetic tests
+        working-directory: scan_build
+        run: |
+          python -m compileall -q .
+          if ($LASTEXITCODE -ne 0) { throw 'Source syntax error' }
+          python -m unittest discover -s tests -v
+          if ($LASTEXITCODE -ne 0) { throw 'Unit/browser test failed' }
+      - name: Package fast-startup Windows onedir app
+        working-directory: scan_build
+        shell: pwsh
+        run: |
+          $extra = @('--collect-all', 'selenium', '--collect-all', 'trio', '--collect-all', 'trio_websocket', '--collect-all', 'websocket', '--collect-all', 'urllib3', '--collect-all', 'certifi', '--collect-all', 'sniffio', '--collect-all', 'attrs', '--collect-all', 'psutil')
+          python -m PyInstaller --noconfirm --clean --onedir --windowed --name WMS_Scan_Login @extra main.py
+          if ($LASTEXITCODE -ne 0) { throw 'Onedir EXE build failed' }
+      - name: Smoke test onedir Chrome, station and compact interface
+        shell: pwsh
+        run: |
+          $exe = (Resolve-Path 'scan_build/dist/WMS_Scan_Login/WMS_Scan_Login.exe').Path
+          $bytes = [System.IO.File]::ReadAllBytes($exe)
+          if ($bytes.Length -lt 2000000 -or $bytes[0] -ne 77 -or $bytes[1] -ne 90) { throw 'Invalid Windows EXE' }
+          $test = Start-Process -FilePath $exe -ArgumentList "--self-test" -Wait -PassThru -WorkingDirectory (Get-Location).Path
+          $selfCode = $test.ExitCode
+          if (Test-Path wms_scan_smoke_result.txt) { Get-Content wms_scan_smoke_result.txt }
+          if ($selfCode -ne 0) { throw "Chrome/Station EXE smoke test failed: code $selfCode" }
+          if (-not ((Get-Content wms_scan_smoke_result.txt -Raw) -match 'PASS')) { throw 'Chrome smoke report missing' }
+          $test = Start-Process -FilePath $exe -ArgumentList "--ui-smoke" -Wait -PassThru -WorkingDirectory (Get-Location).Path
+          $uiCode = $test.ExitCode
+          if (Test-Path wms_ui_smoke_result.txt) { Get-Content wms_ui_smoke_result.txt }
+          if ($uiCode -ne 0) { throw "Mini GUI smoke failed: code $uiCode" }
+          if (-not ((Get-Content wms_ui_smoke_result.txt -Raw) -match 'PASS')) { throw 'GUI smoke report missing' }
+      - name: Upload diagnostic reports even if smoke test fails
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: WMS_v22_Failed_Smoke_Reports
+          path: |
+            wms_scan_smoke_result.txt
+            wms_ui_smoke_result.txt
+          if-no-files-found: warn
+          retention-days: 1
+      - name: Verify ZIP structure for portable folder
+        shell: pwsh
+        run: |
+          if (-not (Test-Path scan_build/dist/WMS_Scan_Login/_internal)) { throw 'Missing required _internal dependencies' }
+          if (-not (Test-Path scan_build/dist/WMS_Scan_Login/WMS_Scan_Login.exe)) { throw 'Missing EXE' }
+          Get-ChildItem scan_build/dist/WMS_Scan_Login | Select-Object Name,Length
+      - name: Upload Windows EXE
+        uses: actions/upload-artifact@v4
+        with:
+          name: WMS_Auto_Login_v2_3_Portable_Windows
+          path: |
+            scan_build/dist/WMS_Scan_Login/**
+            wms_scan_smoke_result.txt
+            wms_ui_smoke_result.txt
+          if-no-files-found: error
+          retention-days: 14
